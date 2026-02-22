@@ -1,0 +1,72 @@
+{
+  "layer": "top",
+  "position": "top",
+  "modules-left": [
+    "clock",
+    "network",
+    "memory"
+  ],
+  "modules-center": [],
+  "modules-right": [
+    "pulseaudio",
+    "custom/bluetooth",
+    "battery",
+    "custom/powermenu"
+  ],
+  "clock": {
+    "interval": 1,
+    "format": "{:%H:%M:%S}",
+    "timezone": "Asia/Jakarta",
+    "tooltip-format": "{:%A, %d %B %Y}"
+  },
+  "network": {
+    "interface": "wlan0",
+    "interval": 5,
+    "format-wifi": " {essid}",
+    "format-ethernet": " {ipaddr}",
+    "format-disconnected": "⚠ Disconnected",
+    "tooltip": true,
+    "on-click": "alacritty -e nmtui"
+  },
+  "memory": {
+    "interval": 5,
+    "format": "󰍛 {used} Gb / {total} Gb",
+    "tooltip-format": "{percentage}% used"
+  },
+  "pulseaudio": {
+		"tooltip": false,
+		"scroll-step": 5,
+		"format": "{icon} {volume}%",
+		"format-muted": " Muted",
+		"on-click":"pavucontrol",
+		"format-icons": {
+			"default": ["", "", ""]
+		}
+	},
+  "custom/bluetooth": {
+    "format": "󰂯",
+    "tooltip": false,
+    "on-click": "blueman-manager"
+  },
+  "battery": {
+    "bat": "BAT0",
+    "adapter": "AC",
+    "format": "{icon} {capacity}%",
+    "format-charging": "⚡ {capacity}%",
+    "format-plugged": " {capacity}%",
+    "tooltip-format": "{time} remaining",
+    "interval": 30,
+    "format-icons": [
+      "󰁺",
+      "󰁼",
+      "󰁾",
+      "󰂀",
+      "󰁹"
+    ]
+  },
+  "custom/powermenu": {
+    "format": "⏻",
+    "tooltip": "Power Menu",
+    "on-click": "~/.config/waybar/scripts/powermenu.sh"
+  }
+}

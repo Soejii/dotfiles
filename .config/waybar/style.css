@@ -1,0 +1,72 @@
+* {
+  border: none;
+  border-radius: 6px;
+  font-family: "JetBrainsMono Nerd Font Mono", "Symbols Nerd Font", "Noto Color Emoji", monospace;  font-size: 14px;
+  min-height: 0;
+  color: #ffffff;
+  background: transparent;
+}
+
+window#waybar {
+  background: transparent;
+  margin-top: 5px;
+}
+
+#clock {
+  background: #ABE9B3;
+  color: #161320;
+  padding: 5px 10px;
+  margin-left: 10px;
+}
+
+#custom-bluetooth {
+  background: #ABE9B3;
+  color: #1e1e2e;
+  padding: 5px 10px;
+  margin-right: 10px;
+}
+
+
+#network {
+  background: #ABE9B3;
+  color: #161320;
+  padding: 5px 10px;
+  margin-left: 10px;
+}
+
+#battery {
+  background: #ABE9B3;
+  color: #161320;
+  padding: 5px 10px;
+  margin-right: 10px;
+}
+
+#custom-powermenu {
+  background: #F28FAD;
+  color: #161320;
+  padding: 5px 10px;
+  margin-right: 10px;
+}
+
+#memory {
+  background: #ABE9B3;
+  color: #161320;
+  padding: 5px 10px;
+  margin-left: 10px;
+}
+
+#pulseaudio {
+  background: #ABE9B3;
+  color: #161320;
+  padding: 5px 10px;
+  margin-right: 10px;
+  font-size: 15;
+}
+
+#pulseaudio.muted {
+  background: #F28FAD;
+  color: #161320;
+  font-style: italic;
+}
+
+
