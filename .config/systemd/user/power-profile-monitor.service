@@ -1,0 +1,10 @@
+[Unit]
+Description=Auto-switch power profile on AC/battery
+
+[Service]
+Type=simple
+ExecStart=/home/suji/.local/bin/power-profile-monitor.sh
+Restart=always
+
+[Install]
+WantedBy=default.target
