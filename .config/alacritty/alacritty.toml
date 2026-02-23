@@ -1,4 +1,32 @@
 
+[window]
+opacity = 0.85
+blur = true
+
+[colors.primary]
+background = "#11111b"
+foreground = "#cdd6f4"
+
+[colors.normal]
+black   = "#45475a"
+red     = "#f38ba8"
+green   = "#a6e3a1"
+yellow  = "#f9e2af"
+blue    = "#89b4fa"
+magenta = "#cba6f7"
+cyan    = "#89dceb"
+white   = "#bac2de"
+
+[colors.bright]
+black   = "#585b70"
+red     = "#f38ba8"
+green   = "#a6e3a1"
+yellow  = "#f9e2af"
+blue    = "#89b4fa"
+magenta = "#cba6f7"
+cyan    = "#89dceb"
+white   = "#a6adc8"
+
 [[keyboard.bindings]]
 key = "Return"
 mods = "Shift"

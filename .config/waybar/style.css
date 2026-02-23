@@ -1,72 +1,55 @@
 * {
   border: none;
-  border-radius: 6px;
-  font-family: "JetBrainsMono Nerd Font Mono", "Symbols Nerd Font", "Noto Color Emoji", monospace;  font-size: 14px;
+  border-radius: 0;
+  font-family: "JetBrainsMono Nerd Font Mono", "Symbols Nerd Font", "Noto Color Emoji", monospace;
+  font-size: 20px;
   min-height: 0;
-  color: #ffffff;
+  color: #cdd6f4;
   background: transparent;
 }
 
 window#waybar {
-  background: transparent;
-  margin-top: 5px;
+  background: rgba(17, 17, 27, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 4px 0;
 }
 
-#clock {
-  background: #ABE9B3;
-  color: #161320;
-  padding: 5px 10px;
-  margin-left: 10px;
+#clock,
+#network,
+#memory,
+#pulseaudio,
+#battery,
+#custom-bluetooth,
+#custom-powermenu {
+  padding: 4px 12px;
+  color: #cdd6f4;
 }
 
 #custom-bluetooth {
-  background: #ABE9B3;
-  color: #1e1e2e;
-  padding: 5px 10px;
-  margin-right: 10px;
+  color: #89b4fa;
 }
 
-
-#network {
-  background: #ABE9B3;
-  color: #161320;
-  padding: 5px 10px;
-  margin-left: 10px;
+#clock {
+  color: #89b4fa;
 }
 
-#battery {
-  background: #ABE9B3;
-  color: #161320;
-  padding: 5px 10px;
-  margin-right: 10px;
+#battery.charging {
+  color: #a6e3a1;
 }
 
-#custom-powermenu {
-  background: #F28FAD;
-  color: #161320;
-  padding: 5px 10px;
-  margin-right: 10px;
-}
-
-#memory {
-  background: #ABE9B3;
-  color: #161320;
-  padding: 5px 10px;
-  margin-left: 10px;
-}
-
-#pulseaudio {
-  background: #ABE9B3;
-  color: #161320;
-  padding: 5px 10px;
-  margin-right: 10px;
-  font-size: 15;
+#battery.critical:not(.charging) {
+  color: #f38ba8;
 }
 
 #pulseaudio.muted {
-  background: #F28FAD;
-  color: #161320;
-  font-style: italic;
+  color: #585b70;
 }
 
+#custom-powermenu {
+  color: #f38ba8;
+  padding-right: 16px;
+}
 
+#network.disconnected {
+  color: #f38ba8;
+}
