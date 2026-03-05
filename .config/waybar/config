@@ -21,7 +21,6 @@
     "tooltip-format": "{:%A, %d %B %Y}"
   },
   "network": {
-    "interface": "wlan0",
     "interval": 5,
     "format-wifi": " {essid}",
     "format-ethernet": " {ipaddr}",
