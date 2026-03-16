@@ -28,3 +28,4 @@ eval "$(zoxide init bash)"
 # fzf (fuzzy finder + Ctrl+R history)
 source /usr/share/fzf/key-bindings.bash
 source /usr/share/fzf/completion.bash
+export PATH="$HOME/.npm-global/bin:$PATH"
