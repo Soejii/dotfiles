@@ -57,13 +57,24 @@ PACKAGES=(
     zoxide
     fzf
     ccache
+    btop
+    starship
+
+    # Gaming
+    gamemode
+    lib32-gamemode
 
     # Dev
     git
     base-devel
+    nodejs
+    npm
 
     # File manager
     dolphin
+
+    # Fonts & icons
+    ttf-nerd-fonts-symbols
 
     # Screenshot deps
     slurp
@@ -90,6 +101,18 @@ dotfiles checkout 2>/dev/null || {
     dotfiles checkout 2>&1 | grep "^\s" | awk '{print $1}' | xargs -I{} sh -c 'mkdir -p ~/.dotfiles-backup/$(dirname {}) && mv ~/{} ~/.dotfiles-backup/{}'
     dotfiles checkout
 }
+
+# ── CLI tools (curl installs) ─────────────────────────────────────────────────
+
+echo "==> Installing cship (Claude Code statusline)..."
+curl -fsSL https://cship.dev/install.sh | bash
+
+echo "==> Setting up npm global prefix..."
+mkdir -p "$HOME/.npm-global"
+npm config set prefix "$HOME/.npm-global"
+
+echo "==> Installing gemini CLI..."
+"$HOME/.npm-global/bin/npm" install -g @google/gemini-cli
 
 # ── Services ──────────────────────────────────────────────────────────────────
 
