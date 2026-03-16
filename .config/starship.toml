@@ -1,0 +1,69 @@
+format = """
+$directory\
+$git_branch\
+$git_status\
+$python\
+$nodejs\
+$rust\
+$golang\
+$dart\
+$cmd_duration\
+$character"""
+
+[directory]
+style             = "bold fg:#89b4fa"
+truncation_length = 3
+truncate_to_repo  = true
+read_only         = " 󰌾"
+read_only_style   = "fg:#f38ba8"
+format            = "[  $path]($style)[$read_only]($read_only_style) "
+
+[git_branch]
+symbol = " "
+style  = "fg:#cba6f7"
+format = "[$symbol$branch]($style) "
+
+[git_status]
+style     = "fg:#fab387"
+format    = "[$all_status$ahead_behind]($style) "
+ahead     = "⇡${count}"
+behind    = "⇣${count}"
+diverged  = "⇕⇡${ahead_count}⇣${behind_count}"
+modified  = "!${count}"
+staged    = "+${count}"
+untracked = "?${count}"
+deleted   = "✘${count}"
+
+[python]
+symbol = " "
+style  = "fg:#f9e2af"
+format = "[$symbol$version]($style) "
+
+[nodejs]
+symbol = "󰎙 "
+style  = "fg:#a6e3a1"
+format = "[$symbol$version]($style) "
+
+[rust]
+symbol = " "
+style  = "fg:#fab387"
+format = "[$symbol$version]($style) "
+
+[golang]
+symbol = "󰟓 "
+style  = "fg:#89dceb"
+format = "[$symbol$version]($style) "
+
+[dart]
+symbol = " "
+style  = "fg:#74c7ec"
+format = "[$symbol$version]($style) "
+
+[cmd_duration]
+min_time = 2000
+style    = "fg:#585b70"
+format   = "[󱎫 $duration]($style) "
+
+[character]
+success_symbol = "[❯](fg:#a6e3a1)"
+error_symbol   = "[❯](fg:#f38ba8)"

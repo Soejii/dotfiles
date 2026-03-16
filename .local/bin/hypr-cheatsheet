@@ -1,0 +1,34 @@
+#!/bin/bash
+alacritty --class hypr-cheatsheet -e bash -c '
+echo "
+  ── General ──────────────────────────
+  SUPER + T          Terminal
+  SUPER + R          App Launcher
+  SUPER + W          Kill Window
+  SUPER + V          Toggle Floating
+  SUPER + M          Exit Hyprland
+  SUPER + L          Lock Screen
+  SUPER + C          Clipboard History
+  SUPER + I          This cheatsheet
+
+  ── Navigation ───────────────────────
+  SUPER + Arrow      Move Focus
+  SUPER + 1-0        Switch Workspace
+  SUPER + SHIFT+1-0  Move to Workspace
+  SUPER + Scroll     Cycle Workspaces
+  SUPER + LMB Drag   Move Window
+  SUPER + RMB Drag   Resize Window
+
+  ── Screenshots ──────────────────────
+  SUPER + SHIFT + S  Area → Clipboard
+  SUPER + SHIFT + A  Fullscreen → Clipboard
+  SUPER + SHIFT + D  Fullscreen → Save File
+
+  ── Media ────────────────────────────
+  Volume Keys        Volume ±5% / Mute
+  Brightness Keys    Brightness ±5%
+  Audio Keys         Next / Prev / Play
+
+  Press any key to close...
+"
+read -n1'
