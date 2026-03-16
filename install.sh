@@ -111,8 +111,8 @@ echo "==> Setting up npm global prefix..."
 mkdir -p "$HOME/.npm-global"
 npm config set prefix "$HOME/.npm-global"
 
-echo "==> Installing gemini CLI..."
-"$HOME/.npm-global/bin/npm" install -g @google/gemini-cli
+echo "==> Installing gemini CLI and Claude Code..."
+"$HOME/.npm-global/bin/npm" install -g @google/gemini-cli @anthropic-ai/claude-code
 
 # ── Services ──────────────────────────────────────────────────────────────────
 
