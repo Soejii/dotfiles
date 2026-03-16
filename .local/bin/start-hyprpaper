@@ -1,0 +1,5 @@
+#!/bin/bash
+hyprpaper &
+sleep 1
+hyprctl hyprpaper preload "/home/suji/Pictures/Wallpapers/dark-cat.png"
+hyprctl hyprpaper wallpaper "eDP-1,/home/suji/Pictures/Wallpapers/dark-cat.png"
