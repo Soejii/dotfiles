@@ -11,6 +11,7 @@ PACKAGES=(
     hyprland
     hypridle
     hyprlock
+    hyprpaper
     xdg-desktop-portal-hyprland
 
     # Wayland essentials
@@ -101,6 +102,13 @@ dotfiles checkout 2>/dev/null || {
     dotfiles checkout 2>&1 | grep "^\s" | awk '{print $1}' | xargs -I{} sh -c 'mkdir -p ~/.dotfiles-backup/$(dirname {}) && mv ~/{} ~/.dotfiles-backup/{}'
     dotfiles checkout
 }
+
+# ── Wallpaper ─────────────────────────────────────────────────────────────────
+
+echo "==> Downloading wallpaper..."
+mkdir -p "$HOME/Pictures/Wallpapers"
+curl -Lo "$HOME/Pictures/Wallpapers/dark-cat.png" \
+    "https://raw.githubusercontent.com/zhichaoh/catppuccin-wallpapers/main/minimalistic/dark-cat.png"
 
 # ── CLI tools (curl installs) ─────────────────────────────────────────────────
 
