@@ -1,0 +1,7 @@
+android-studio
+grimblast-git
+postman-bin
+vesktop-bin
+visual-studio-code-bin
+yay
+yay-debug
