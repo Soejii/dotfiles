@@ -29,3 +29,4 @@ eval "$(zoxide init bash)"
 source /usr/share/fzf/key-bindings.bash
 source /usr/share/fzf/completion.bash
 export PATH="$HOME/.npm-global/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"

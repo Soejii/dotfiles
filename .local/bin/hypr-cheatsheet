@@ -6,23 +6,32 @@ echo "
   SUPER + R          App Launcher
   SUPER + W          Kill Window
   SUPER + V          Toggle Floating
+  SUPER + F          Fullscreen (keep bar)
+  SUPER + SHIFT + F  True Fullscreen
   SUPER + M          Exit Hyprland
   SUPER + L          Lock Screen
+  SUPER + N          Toggle Night Light
   SUPER + C          Clipboard History
   SUPER + I          This cheatsheet
 
   ── Navigation ───────────────────────
   SUPER + Arrow      Move Focus
+  SUPER + SHIFT+Arr  Move Window
+  SUPER + CTRL+Arr   Resize Window (40px)
   SUPER + 1-0        Switch Workspace
-  SUPER + SHIFT+1-0  Move to Workspace
+  SUPER + SHIFT+1-0  Send to Workspace
   SUPER + Scroll     Cycle Workspaces
   SUPER + LMB Drag   Move Window
   SUPER + RMB Drag   Resize Window
 
+  ── Scratchpad ───────────────────────
+  SUPER + S          Toggle Scratchpad
+  SUPER + SHIFT + \`  Send to Scratchpad
+
   ── Screenshots ──────────────────────
-  SUPER + SHIFT + S  Area → Clipboard
-  SUPER + SHIFT + A  Fullscreen → Clipboard
-  SUPER + SHIFT + D  Fullscreen → Save File
+  SUPER + SHIFT + S  Area  → save + copy
+  SUPER + SHIFT + A  Full  → save + copy
+  (auto-saved to ~/Pictures/Screenshots/)
 
   ── Media ────────────────────────────
   Volume Keys        Volume ±5% / Mute

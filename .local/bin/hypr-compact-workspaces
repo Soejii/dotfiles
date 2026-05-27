@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""
+Auto-compact Hyprland workspaces.
+
+Listens on the Hyprland event socket. When a window close or move leaves a
+gap (e.g. workspaces 1 and 3 occupied with 2 empty), shifts windows down so
+the occupied workspaces are always 1, 2, 3, ... in order.
+
+Special workspaces (negative IDs) are ignored.
+"""
+
+import json
+import os
+import socket
+import subprocess
+import sys
+import threading
+import time
+
+SIG = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+RUNTIME = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+if not SIG:
+    sys.exit("HYPRLAND_INSTANCE_SIGNATURE not set; not running under Hyprland")
+
+EVENT_SOCK = f"{RUNTIME}/hypr/{SIG}/.socket2.sock"
+
+TRIGGER_EVENTS = ("closewindow", "movewindow", "movewindowv2", "destroyworkspace")
+
+_compact_lock = threading.Lock()
+
+
+def hyprctl_json(*args):
+    out = subprocess.check_output(["hyprctl", "-j", *args])
+    return json.loads(out)
+
+
+def hyprctl_batch(commands):
+    if not commands:
+        return
+    batch = " ; ".join(commands)
+    subprocess.run(["hyprctl", "--batch", batch], stdout=subprocess.DEVNULL)
+
+
+def compact():
+    if not _compact_lock.acquire(blocking=False):
+        return
+    try:
+        workspaces = hyprctl_json("workspaces")
+        occupied = sorted(
+            ws["id"] for ws in workspaces if ws["id"] > 0 and ws["windows"] > 0
+        )
+        if not occupied:
+            return
+
+        active_id = hyprctl_json("activeworkspace")["id"]
+        new_active = active_id
+
+        moves = []
+        for idx, ws_id in enumerate(occupied, start=1):
+            if ws_id == idx:
+                continue
+            clients = hyprctl_json("clients")
+            for c in clients:
+                if c["workspace"]["id"] == ws_id:
+                    moves.append(
+                        f"dispatch movetoworkspacesilent {idx},address:{c['address']}"
+                    )
+            if ws_id == active_id:
+                new_active = idx
+
+        if not moves:
+            return
+
+        hyprctl_batch(moves)
+        if new_active != active_id:
+            subprocess.run(
+                ["hyprctl", "dispatch", "workspace", str(new_active)],
+                stdout=subprocess.DEVNULL,
+            )
+        # Let resulting events drain before releasing the lock
+        time.sleep(0.15)
+    finally:
+        _compact_lock.release()
+
+
+def main():
+    # Compact current state on startup
+    threading.Thread(target=compact, daemon=True).start()
+
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect(EVENT_SOCK)
+    buf = b""
+    while True:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        buf += chunk
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            event = line.decode(errors="replace").split(">>", 1)[0]
+            if event in TRIGGER_EVENTS:
+                threading.Thread(target=compact, daemon=True).start()
+
+
+if __name__ == "__main__":
+    main()

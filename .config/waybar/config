@@ -3,17 +3,31 @@
   "position": "top",
   "height": 40,
   "modules-left": [
-    "clock",
-    "network",
-    "memory"
+    "hyprland/workspaces",
+    "hyprland/window"
   ],
-  "modules-center": [],
+  "modules-center": [
+    "clock"
+  ],
   "modules-right": [
+    "network",
+    "memory",
     "pulseaudio",
     "custom/bluetooth",
     "battery",
     "custom/powermenu"
   ],
+  "hyprland/workspaces": {
+    "format": "{name}",
+    "on-click": "activate",
+    "all-outputs": true,
+    "sort-by-number": true
+  },
+  "hyprland/window": {
+    "format": "{title}",
+    "max-length": 60,
+    "separate-outputs": true
+  },
   "clock": {
     "interval": 1,
     "format": "{:%H:%M:%S}",
@@ -22,8 +36,8 @@
   },
   "network": {
     "interval": 5,
-    "format-wifi": " {essid}",
-    "format-ethernet": " {ipaddr}",
+    "format-wifi": " {essid}",
+    "format-ethernet": " {ipaddr}",
     "format-disconnected": "⚠ Disconnected",
     "tooltip": true,
     "on-click": "alacritty -e nmtui"
@@ -34,15 +48,15 @@
     "tooltip-format": "{percentage}% used"
   },
   "pulseaudio": {
-		"tooltip": false,
-		"scroll-step": 5,
-		"format": "{icon} {volume}%",
-		"format-muted": " Muted",
-		"on-click":"pavucontrol",
-		"format-icons": {
-			"default": ["", "", ""]
-		}
-	},
+    "tooltip": false,
+    "scroll-step": 5,
+    "format": "{icon} {volume}%",
+    "format-muted": " Muted",
+    "on-click": "pavucontrol",
+    "format-icons": {
+      "default": ["", "", ""]
+    }
+  },
   "custom/bluetooth": {
     "format": "󰂯",
     "tooltip": false,
@@ -53,7 +67,7 @@
     "adapter": "AC",
     "format": "{icon} {capacity}%",
     "format-charging": "⚡ {capacity}%",
-    "format-plugged": " {capacity}%",
+    "format-plugged": " {capacity}%",
     "tooltip-format": "{time} remaining",
     "interval": 30,
     "format-icons": [

@@ -1,0 +1,18 @@
+#!/bin/bash
+# Toggle hyprsunset between scheduled profile and identity (no-filter).
+# State marker: /tmp/hyprsunset.disabled
+
+MARKER=/tmp/hyprsunset.disabled
+
+if [ -f "$MARKER" ]; then
+    # Re-enable: kick the daemon so it re-applies the current schedule
+    pkill -x hyprsunset 2>/dev/null
+    sleep 0.2
+    nohup hyprsunset >/dev/null 2>&1 & disown
+    rm -f "$MARKER"
+    notify-send -a hyprsunset -t 1500 "Night light: ON" "Schedule resumed"
+else
+    hyprctl hyprsunset identity >/dev/null
+    touch "$MARKER"
+    notify-send -a hyprsunset -t 1500 "Night light: OFF" "Colors neutral"
+fi
