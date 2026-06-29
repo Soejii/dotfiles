@@ -1,0 +1,13 @@
+[Unit]
+Description=Run claude-ping at 09:00 / 14:00 / 19:00 (anchor the 5h window)
+
+[Timer]
+OnCalendar=*-*-* 09,14,19:00:00
+# Persistent = catch up a missed run after the box was off (Windows StartWhenAvailable).
+Persistent=true
+# Wake the machine from suspend to fire (Windows WakeToRun). If your user lacks
+# permission to program the RTC alarm, drop this line and the ping just waits.
+WakeSystem=true
+
+[Install]
+WantedBy=timers.target

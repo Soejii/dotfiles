@@ -1,0 +1,40 @@
+# Desktop additions for the RX 9060 XT / gaming / migration.
+# These are the delta NOT already in packages-pacman.txt. Install after enabling
+# [multilib] in /etc/pacman.conf (uncomment the [multilib] section, then -Syu).
+
+# --- AMD 32-bit gaming (multilib) ---
+lib32-mesa
+lib32-vulkan-radeon
+vulkan-mesa-layers
+lib32-vulkan-mesa-layers
+
+# --- GPU control + overlay (replaces MSI Afterburner + RivaTuner RTSS + HWiNFO) ---
+mangohud
+lib32-mangohud
+goverlay
+
+# --- gaming runtime ---
+lutris
+wine
+wine-mono
+wine-gecko
+winetricks
+gamescope
+
+# --- btrfs rollback parachute ---
+snapper
+snap-pac
+grub-btrfs
+inotify-tools
+
+# --- creative / replacements ---
+inkscape          # Adobe Illustrator replacement
+openrgb           # ASRock Polychrome (ASRRGBLED) replacement
+
+# --- AUR (install with yay; add to packages-aur.txt) ---
+# lact            # AMD GPU fan curves / undervolt / clocks
+# davinci-resolve # native, uses your ROCm/HIP stack for OpenCL
+# protonup-qt     # manage GE-Proton versions
+# sober           # Roblox on Linux
+# vesktop-bin     # (already in your aur list) Discord
+# haguichi + logmein-hamachi   # only if you keep Hamachi (else use zerotier/tailscale)

@@ -1,0 +1,10 @@
+[Unit]
+Description=Anchor Claude subscription 5h usage window (Haiku ping)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# systemd user units start with a bare PATH; spell it out (same trap as CC hooks).
+Environment=PATH=%h/.local/bin:%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/claude-ping.sh

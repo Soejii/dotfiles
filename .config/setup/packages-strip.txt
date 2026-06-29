@@ -1,0 +1,24 @@
+# Do NOT install these on the desktop -- they are laptop / Intel-only.
+# Your packages-pacman.txt snapshot came from the laptop; remove these lines
+# from the desktop install (or `pacman -Rns` them if they sneak in).
+
+# Intel GPU stack (desktop is all-AMD)
+intel-media-driver
+libva-intel-driver
+vulkan-intel
+
+# Laptop power management (pointless / counterproductive on a desktop)
+tlp
+tlp-rdw
+xfce4-power-manager
+acpi
+
+# Laptop wireless (desktop is wired Realtek GbE -> r8169, in linux-firmware already)
+iwd
+wireless_tools
+
+# Also DO NOT enable these laptop systemd user units on the desktop:
+#   battery-warn.timer
+#   power-profile-monitor.service
+# And in waybar/config: change "interface": "wlan0" to your wired iface
+#   (run `ip link` -> e.g. enp34s0), or delete the interface line to auto-detect.
