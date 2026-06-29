@@ -92,10 +92,12 @@ if (-not $Execute) {
 }
 
 # ---------------- EXECUTE ----------------
-if (-not $Dest) { throw "Pass -Dest <path on an EXTERNAL drive>." }
+if (-not $Dest) { throw "Pass -Dest <path that survives the wipe>." }
 $destRoot = (Split-Path $Dest -Qualifier)
-if ($destRoot -match '^[CDFZ]:') {
-    throw "Dest '$Dest' is on an internal disk ($destRoot) that gets wiped. Use an external/USB drive."
+# Only the Lexar 2TB (Disk 0 = C: + D:) gets wiped. F:/Z: are on the ADATA (kept),
+# and a USB survives too. Block only the doomed disk.
+if ($destRoot -match '^[CD]:') {
+    throw "Dest '$Dest' is on the Lexar 2TB (Disk 0) that gets wiped. Use F: (ADATA, survives), a USB, or cloud."
 }
 
 $stamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
