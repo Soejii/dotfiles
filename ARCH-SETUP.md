@@ -1,5 +1,8 @@
 # Arch desktop setup runbook
 
+> **Start with [`context.md`](context.md)** for the background (machine, user, where the
+> pre-wipe backup lives, how to restore code). Then execute this file.
+
 > **For Claude Code.** You are running on a freshly installed Arch Linux on my main
 > desktop. Execute this file top to bottom. Run every non-interactive command
 > yourself. Stop and ask me ONLY at steps marked **🟡 ME** (logins, secrets,
