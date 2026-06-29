@@ -13,13 +13,18 @@ echo "
   SUPER + N          Toggle Night Light
   SUPER + C          Clipboard History
   SUPER + I          This cheatsheet
+  SUPER + O          Workspace Overview
+
+  ── Window Cycling ───────────────────
+  CTRL + Tab         Next Window
+  CTRL + SHIFT+Tab   Prev Window
 
   ── Navigation ───────────────────────
   SUPER + Arrow      Move Focus
   SUPER + SHIFT+Arr  Move Window
   SUPER + CTRL+Arr   Resize Window (40px)
-  SUPER + 1-0        Switch Workspace
-  SUPER + SHIFT+1-0  Send to Workspace
+  SUPER + 1-0        Switch Workspace (this monitor)
+  SUPER + SHIFT+1-0  Send to Workspace (this monitor)
   SUPER + Scroll     Cycle Workspaces
   SUPER + LMB Drag   Move Window
   SUPER + RMB Drag   Resize Window

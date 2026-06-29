@@ -1,0 +1,19 @@
+#!/bin/bash
+# Switch to the Nth workspace (1-10) on the currently focused monitor.
+# DP-1 maps to workspace IDs 1-10, HDMI-A-1 maps to IDs 11-20.
+# Workspaces on HDMI-A-1 are renamed to "1"-"10" for display.
+
+N=$1
+MONITOR=$(hyprctl monitors -j | python3 -c "import json,sys; print(next(m['name'] for m in json.load(sys.stdin) if m['focused']))")
+
+case "$MONITOR" in
+    DP-1)       WS=$N ;;
+    HDMI-A-1)   WS=$((N + 10)) ;;
+    *)          WS=$N ;;
+esac
+
+hyprctl dispatch workspace "$WS"
+
+if [ "$MONITOR" = "HDMI-A-1" ] && [ "$WS" -gt 10 ]; then
+    hyprctl dispatch renameworkspace "$WS" "$N" 2>/dev/null
+fi

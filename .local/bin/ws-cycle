@@ -1,0 +1,63 @@
+#!/bin/bash
+# Cycle to the next/previous workspace on the focused monitor.
+# Usage: ws-cycle next | ws-cycle prev
+
+DIRECTION=$1
+MONITOR=$(hyprctl monitors -j | python3 -c "import json,sys; print(next(m['name'] for m in json.load(sys.stdin) if m['focused']))")
+
+case "$MONITOR" in
+    DP-1)       LO=1;  HI=10 ;;
+    HDMI-A-1)   LO=11; HI=20 ;;
+    *)          LO=1;  HI=10 ;;
+esac
+
+CURRENT=$(hyprctl activeworkspace -j | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+
+# Get all existing workspace IDs in this monitor's range, sorted
+EXISTING=$(hyprctl workspaces -j | python3 -c "
+import json, sys
+wss = json.load(sys.stdin)
+ids = sorted(ws['id'] for ws in wss if $LO <= ws['id'] <= $HI)
+print(' '.join(str(i) for i in ids))
+")
+
+# Build list: existing workspaces + the next empty one at the end
+IDS=($EXISTING)
+COUNT=${#IDS[@]}
+
+if [ "$COUNT" -eq 0 ]; then
+    hyprctl dispatch workspace "$LO"
+    exit 0
+fi
+
+# Find current index
+CURRENT_IDX=-1
+for i in "${!IDS[@]}"; do
+    if [ "${IDS[$i]}" -eq "$CURRENT" ]; then
+        CURRENT_IDX=$i
+        break
+    fi
+done
+
+if [ "$DIRECTION" = "next" ]; then
+    NEXT_IDX=$((CURRENT_IDX + 1))
+    if [ "$NEXT_IDX" -ge "$COUNT" ]; then
+        # Wrap to first
+        NEXT_IDX=0
+    fi
+else
+    NEXT_IDX=$((CURRENT_IDX - 1))
+    if [ "$NEXT_IDX" -lt 0 ]; then
+        # Wrap to last
+        NEXT_IDX=$((COUNT - 1))
+    fi
+fi
+
+TARGET=${IDS[$NEXT_IDX]}
+hyprctl dispatch workspace "$TARGET"
+
+# Rename for display if on HDMI-A-1
+if [ "$MONITOR" = "HDMI-A-1" ] && [ "$TARGET" -gt 10 ]; then
+    DISPLAY_NUM=$((TARGET - 10))
+    hyprctl dispatch renameworkspace "$TARGET" "$DISPLAY_NUM" 2>/dev/null
+fi
