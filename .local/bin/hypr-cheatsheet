@@ -16,8 +16,8 @@ echo "
   SUPER + O          Workspace Overview
 
   ── Window Cycling ───────────────────
-  CTRL + Tab         Next Window
-  CTRL + SHIFT+Tab   Prev Window
+  ALT + Tab          Next Workspace
+  ALT + SHIFT+Tab    Prev Workspace
 
   ── Navigation ───────────────────────
   SUPER + Arrow      Move Focus
