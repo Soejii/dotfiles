@@ -40,8 +40,6 @@ less
 libreoffice-fresh
 libva-intel-driver
 libvirt
-lightdm
-lightdm-gtk-greeter
 linux
 linux-firmware
 linux-lts
@@ -63,10 +61,14 @@ polkit-gnome
 python-pip
 qemu-desktop
 qt5-wayland
+qt6-5compat
+qt6-declarative
+qt6-svg
 qt6-wayland
 r
 reflector
 sassc
+sddm
 slurp
 smartmontools
 sof-firmware

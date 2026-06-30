@@ -95,11 +95,20 @@ sudo systemctl enable --now snapper-timeline.timer snapper-cleanup.timer grub-bt
 ## Phase 6 — Services + firewall
 ```bash
 sudo systemctl enable --now NetworkManager bluetooth
-sudo systemctl enable lightdm
+sudo systemctl enable sddm
 systemctl --user enable --now pipewire pipewire-pulse wireplumber
 sudo ufw default deny incoming && sudo ufw default allow outgoing && sudo ufw --force enable && sudo systemctl enable --now ufw
+
+# SDDM theme — Catppuccin Mocha / Blue, matches the rice (official-repo deps, no AUR)
+curl -fL -o /tmp/sddm-theme.zip https://github.com/catppuccin/sddm/releases/latest/download/catppuccin-mocha-blue-sddm.zip
+sudo unzip -o /tmp/sddm-theme.zip -d /usr/share/sddm/themes/
+printf '[Theme]\nCurrent=catppuccin-mocha-blue\n' | sudo tee /etc/sddm.conf.d/theme.conf
 ```
-**✅ gate:** `systemctl is-enabled NetworkManager lightdm ufw`
+**✅ gate:** `systemctl is-enabled NetworkManager sddm ufw`
+
+> **Note:** Hyprland needs SDDM (or GDM), **not LightDM**. LightDM's seat handoff to a
+> Wayland session is buggy and leaves keyboard + mouse dead inside Hyprland (works from
+> a TTY, not from the LightDM greeter). SDDM hands off the logind seat correctly.
 
 ## Phase 7 — Hyprland / monitors / theme
 The dotfiles already ship hypr + waybar configs; `hyprland.conf` sources
