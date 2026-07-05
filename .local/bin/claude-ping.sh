@@ -12,8 +12,19 @@ LOG="$LOG_DIR/ping.log"
 mkdir -p "$LOG_DIR"
 ts="$(date '+%Y-%m-%d %H:%M:%S')"
 
-# claude is installed via the npm global prefix in install.sh (~/.npm-global/bin)
-CLAUDE="$(command -v claude || echo "$HOME/.npm-global/bin/claude")"
+# Headless `claude -p` cannot refresh an expired OAuth access token (8h TTL),
+# so any run >8h after the last interactive session 401s (claude-code#53063).
+# A long-lived subscription token from `claude setup-token`, stored in
+# $LOG_DIR/oauth-token (chmod 600), bypasses refresh entirely and still
+# draws from the subscription window.
+TOKEN_FILE="$LOG_DIR/oauth-token"
+if [[ -s "$TOKEN_FILE" ]]; then
+    CLAUDE_CODE_OAUTH_TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+    export CLAUDE_CODE_OAUTH_TOKEN
+fi
+
+# claude is the native installer binary (~/.local/bin, symlink into ~/.local/share/claude)
+CLAUDE="$(command -v claude || echo "$HOME/.local/bin/claude")"
 if [[ ! -x "$CLAUDE" ]]; then
     echo "[$ts] ERROR claude not found at $CLAUDE" >> "$LOG"
     exit 0
@@ -31,4 +42,7 @@ elif [[ $code -eq 0 ]]; then
     echo "[$ts] OK    exit=$code  resp='$clean'" >> "$LOG"
 else
     echo "[$ts] FAIL  exit=$code  resp='$clean'" >> "$LOG"
+    # Non-zero so systemd marks the unit failed and the miss is visible in
+    # `systemctl --user --failed` instead of only inside ping.log.
+    exit 1
 fi
