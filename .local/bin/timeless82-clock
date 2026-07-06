@@ -1,0 +1,111 @@
+#!/usr/bin/python3
+"""Set the TFT screen clock on the Noir Timeless82 v2 Classic keyboard (USB 320f:5055).
+
+Protocol (reverse-engineered 2026-07-06 from the official Windows tool via Wine+strace):
+  - Talks to the vendor HID interface with usage page 0xFF1C (OUTPUT report id 0x04, 64 bytes).
+  - Packet: [0x04][cksum lo][cksum hi][cmd][args...], zero-padded to 64 bytes.
+    cksum = 16-bit little-endian sum of all bytes from cmd onward.
+  - cmd 0x01 = begin transaction, 0x02 = commit, 0x05 = read settings chunk
+    (args: len, offset), 0x06 = write 0x30-byte settings block (args: 0x30 00 00 00 <block>).
+  - Settings block: screen config; time lives at block[0x22..0x29] =
+    [0x56 marker][ss][mm][hh][dow Mon=1][dd][MM][yy], all BCD.
+  - Keyboard replies 8 bytes per packet: [0x04][cksum echo][cmd][4 data bytes].
+
+Usage: timeless82-clock ["YYYY-MM-DD HH:MM:SS"]   (default: now)
+The clock zeroes to Jan 1 00:00 whenever the keyboard fully loses power; it ticks
+correctly on its own once set, so running this at login is enough.
+"""
+import datetime
+import glob
+import os
+import select
+import sys
+
+USAGE_PAGE_FF1C = b"\x06\x1c\xff"  # HID report descriptor: Usage Page (vendor 0xFF1C)
+
+
+def find_node():
+    for p in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
+        try:
+            uevent = open(p + "/device/uevent").read()
+            if "320F" not in uevent or "5055" not in uevent:
+                continue
+            rdesc = open(p + "/device/report_descriptor", "rb").read()
+            if USAGE_PAGE_FF1C in rdesc:
+                return "/dev/" + os.path.basename(p)
+        except OSError:
+            continue
+    return None
+
+
+def packet(cmd, payload=b""):
+    body = (bytes([cmd]) + payload).ljust(61, b"\x00")
+    cksum = sum(body) & 0xFFFF
+    return bytes([0x04, cksum & 0xFF, cksum >> 8]) + body
+
+
+def xfer(fd, cmd, payload=b""):
+    pkt = packet(cmd, payload)
+    os.write(fd, pkt)
+    r, _, _ = select.select([fd], [], [], 1.0)
+    if not r:
+        raise TimeoutError(f"no reply to cmd {cmd:#04x}")
+    resp = os.read(fd, 64)
+    if resp[0] != 0x04 or resp[3] != cmd:
+        raise IOError(f"bad reply to cmd {cmd:#04x}: {resp.hex(' ')}")
+    return resp
+
+
+def bcd(n):
+    return ((n // 10) << 4) | (n % 10)
+
+
+def unbcd(b):
+    return (b >> 4) * 10 + (b & 0x0F)
+
+
+def main():
+    when = datetime.datetime.now()
+    if len(sys.argv) > 1:
+        when = datetime.datetime.fromisoformat(sys.argv[1])
+
+    node = find_node()
+    if node is None:
+        print("timeless82-clock: keyboard not found, nothing to do")
+        return 0
+    try:
+        fd = os.open(node, os.O_RDWR)
+    except PermissionError:
+        print(f"timeless82-clock: no access to {node} (udev uaccess rule missing?)")
+        return 1
+
+    try:
+        block = bytearray(0x30)
+        for off in range(0, 0x30, 4):
+            resp = xfer(fd, 0x05, bytes([4, off]))
+            block[off:off + 4] = resp[4:8]
+
+        t = block[0x23:0x2A]
+        print(f"device time: 20{unbcd(t[6]):02d}-{unbcd(t[5]):02d}-{unbcd(t[4]):02d} "
+              f"{unbcd(t[2]):02d}:{unbcd(t[1]):02d}:{unbcd(t[0]):02d} (dow {t[3]})")
+
+        block[0x22] = 0x56
+        block[0x23] = bcd(when.second)
+        block[0x24] = bcd(when.minute)
+        block[0x25] = bcd(when.hour)
+        block[0x26] = when.isoweekday()
+        block[0x27] = bcd(when.day)
+        block[0x28] = bcd(when.month)
+        block[0x29] = bcd(when.year % 100)
+
+        xfer(fd, 0x01)
+        xfer(fd, 0x06, b"\x30\x00\x00\x00" + bytes(block))
+        xfer(fd, 0x02)
+        print(f"clock set to:  {when:%Y-%m-%d %H:%M:%S} (dow {when.isoweekday()})")
+    finally:
+        os.close(fd)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

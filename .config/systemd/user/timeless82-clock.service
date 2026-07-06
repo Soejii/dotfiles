@@ -1,0 +1,11 @@
+[Unit]
+Description=Set Timeless82 keyboard TFT screen clock
+
+[Service]
+Type=oneshot
+# brief delay so the uaccess ACL is in place on login/hotplug
+ExecStartPre=/usr/bin/sleep 2
+ExecStart=/home/suji/.local/bin/timeless82-clock
+
+[Install]
+WantedBy=default.target

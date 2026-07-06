@@ -1,0 +1,4 @@
+# Noir Timeless82 v2 Classic keyboard (320f:5055)
+# - uaccess: give the seated user rw on its hidraw nodes (clock setting)
+# - SYSTEMD_USER_WANTS: re-run the clock sync service on (re)plug
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="320f", ATTRS{idProduct}=="5055", TAG+="uaccess", TAG+="systemd", ENV{SYSTEMD_USER_WANTS}+="timeless82-clock.service"
