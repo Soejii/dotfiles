@@ -1,0 +1,128 @@
+#!/usr/bin/python3
+"""Upload an image / GIF / video to the Noir Timeless82 v2 Classic TFT screen.
+
+Usage:
+  timeless82-screen <media file> [--fit]
+
+Anything ffmpeg can decode works. The animation region holds 35 frames of
+240x135 RGB565 (big-endian), played in a fixed ~4 s loop (~9 fps); animated
+sources are time-warped to fit the loop, static images fill all 35 frames.
+Default scaling fills the panel (center-crop); --fit letterboxes instead.
+
+Protocol notes: ~/CODE/timeless82/PROTOCOL.md (reverse-engineered 2026-07-06).
+Companion: timeless82-clock (same vendor HID interface).
+"""
+import os
+import select
+import subprocess
+import sys
+
+W, H = 240, 135
+FRAME_BYTES = W * H * 2
+SLOT = 0x10000
+FRAMES = 35
+CHUNK = 0x38
+USAGE_PAGE_FF1C = b"\x06\x1c\xff"
+FFMPEG, FFPROBE = "/usr/bin/ffmpeg", "/usr/bin/ffprobe"
+
+
+def find_node():
+    import glob
+    for p in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
+        try:
+            uevent = open(p + "/device/uevent").read()
+            if "320F" not in uevent or "5055" not in uevent:
+                continue
+            if USAGE_PAGE_FF1C in open(p + "/device/report_descriptor", "rb").read():
+                return "/dev/" + os.path.basename(p)
+        except OSError:
+            continue
+    return None
+
+
+def packet(cmd, payload=b""):
+    body = (bytes([cmd]) + payload).ljust(61, b"\x00")
+    cksum = sum(body) & 0xFFFF
+    return bytes([0x04, cksum & 0xFF, cksum >> 8]) + body
+
+
+def xfer(fd, cmd, payload=b""):
+    os.write(fd, packet(cmd, payload))
+    r, _, _ = select.select([fd], [], [], 10.0)
+    if not r:
+        raise TimeoutError(f"no reply to cmd {cmd:#04x}")
+    resp = os.read(fd, 64)
+    if resp[0] != 0x04 or resp[3] != cmd:
+        raise IOError(f"bad reply to cmd {cmd:#04x}: {resp.hex(' ')}")
+    return resp
+
+
+def probe_duration(path):
+    out = subprocess.run(
+        [FFPROBE, "-v", "error", "-show_entries", "format=duration",
+         "-of", "csv=p=0", path],
+        capture_output=True, text=True).stdout.strip()
+    try:
+        return float(out)
+    except ValueError:
+        return 0.0
+
+
+def decode_frames(path, fit):
+    if fit:
+        vf = (f"scale={W}:{H}:force_original_aspect_ratio=decrease,"
+              f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black")
+    else:
+        vf = f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}"
+    duration = probe_duration(path)
+    if duration > 0.2:
+        vf += f",fps={FRAMES / duration}"
+    cmd = [FFMPEG, "-v", "error", "-i", path, "-vf", vf,
+           "-frames:v", str(FRAMES), "-f", "rawvideo", "-pix_fmt", "rgb565be", "-"]
+    raw = subprocess.run(cmd, capture_output=True, check=True).stdout
+    n = len(raw) // FRAME_BYTES
+    if n == 0:
+        sys.exit(f"ffmpeg produced no frames for {path}")
+    frames = [raw[i * FRAME_BYTES:(i + 1) * FRAME_BYTES] for i in range(n)]
+    # stretch/replicate to exactly 35 frames
+    return [frames[i * n // FRAMES] for i in range(FRAMES)]
+
+
+def upload(frames):
+    node = find_node()
+    if node is None:
+        sys.exit("keyboard not found (320f:5055)")
+    region = bytearray(FRAMES * SLOT)
+    for i, fr in enumerate(frames):
+        region[i * SLOT:i * SLOT + FRAME_BYTES] = fr
+    total = len(region)
+    fd = os.open(node, os.O_RDWR)
+    try:
+        xfer(fd, 0x23)  # begin: bulk-erases the whole animation region
+        for off in range(0, total, CHUNK):
+            xfer(fd, 0x21, bytes([CHUNK, off & 0xFF, (off >> 8) & 0xFF,
+                                  (off >> 16) & 0xFF]) + region[off:off + CHUNK])
+            if off % (total // 10 // CHUNK * CHUNK) == 0:
+                print(f"  {100 * off // total}%", flush=True)
+        xfer(fd, 0x02)  # commit
+    finally:
+        os.close(fd)
+
+
+def main():
+    args = [a for a in sys.argv[1:] if a != "--fit"]
+    fit = "--fit" in sys.argv
+    if len(args) != 1:
+        sys.exit(__doc__.strip())
+    path = args[0]
+    if not os.path.isfile(path):
+        sys.exit(f"no such file: {path}")
+    print(f"converting {os.path.basename(path)} to {FRAMES}x {W}x{H} rgb565be...")
+    frames = decode_frames(path, fit)
+    print("uploading (about a minute)...")
+    upload(frames)
+    print("done. Fn+Enter cycles the screen between clock and animation.")
+
+
+if __name__ == "__main__":
+    main()
