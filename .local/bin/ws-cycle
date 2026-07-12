@@ -26,7 +26,7 @@ IDS=($EXISTING)
 COUNT=${#IDS[@]}
 
 if [ "$COUNT" -eq 0 ]; then
-    hyprctl dispatch workspace "$LO"
+    hyprctl dispatch "hl.dsp.focus({ workspace = $LO })"
     exit 0
 fi
 
@@ -54,10 +54,10 @@ else
 fi
 
 TARGET=${IDS[$NEXT_IDX]}
-hyprctl dispatch workspace "$TARGET"
+hyprctl dispatch "hl.dsp.focus({ workspace = $TARGET })"
 
 # Rename for display if on HDMI-A-1
 if [ "$MONITOR" = "HDMI-A-1" ] && [ "$TARGET" -gt 10 ]; then
     DISPLAY_NUM=$((TARGET - 10))
-    hyprctl dispatch renameworkspace "$TARGET" "$DISPLAY_NUM" 2>/dev/null
+    hyprctl dispatch "hl.dsp.workspace.rename({ workspace = $TARGET, name = \"$DISPLAY_NUM\" })" 2>/dev/null
 fi

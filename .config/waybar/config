@@ -11,14 +11,17 @@
   ],
   "modules-right": [
     "network",
+    "custom/warp",
+    "custom/hypridle",
     "memory",
-    "pulseaudio",
+    "custom/volume",
     "battery",
     "custom/powermenu"
   ],
   "hyprland/workspaces": {
     "format": "{name}",
-    "on-click": "activate",
+    "on-scroll-up": "/home/suji/.local/bin/ws-cycle prev",
+    "on-scroll-down": "/home/suji/.local/bin/ws-cycle next",
     "all-outputs": false,
     "sort-by-number": true
   },
@@ -31,7 +34,23 @@
     "interval": 1,
     "format": "{:%H:%M:%S}",
     "timezone": "Asia/Jakarta",
-    "tooltip-format": "{:%A, %d %B %Y}"
+    "on-click": "gsimplecal",
+    "tooltip-format": "<b>{:%A, %d %B %Y}</b>\n{calendar}",
+    "calendar": {
+      "mode": "month",
+      "on-scroll": 1,
+      "format": {
+        "months":   "<span color='#cdd6f4'><b>{}</b></span>",
+        "days":     "<span color='#cdd6f4'>{}</span>",
+        "weekdays": "<span color='#89b4fa'><b>{}</b></span>",
+        "today":    "<span color='#f38ba8'><b>{}</b></span>"
+      }
+    },
+    "actions": {
+      "on-click-right": "mode",
+      "on-scroll-up": "shift_up",
+      "on-scroll-down": "shift_down"
+    }
   },
   "network": {
     "interval": 5,
@@ -46,15 +65,36 @@
     "format": "󰍛 {used} Gb / {total} Gb",
     "tooltip-format": "{percentage}% used"
   },
-  "pulseaudio": {
-    "tooltip": false,
-    "scroll-step": 5,
-    "format": "{icon} {volume}%",
-    "format-muted": " Muted",
+  "custom/volume": {
+    "exec": "~/.config/waybar/scripts/audio-status.sh",
+    "return-type": "json",
+    "interval": 1,
+    "signal": 8,
+    "format": "{}",
+    "tooltip": true,
     "on-click": "pavucontrol",
-    "format-icons": {
-      "default": ["", "", ""]
-    }
+    "on-click-right": "~/.config/waybar/scripts/audio-switch.sh",
+    "on-click-middle": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle && pkill -RTMIN+8 waybar",
+    "on-scroll-up": "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+ && pkill -RTMIN+8 waybar",
+    "on-scroll-down": "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- && pkill -RTMIN+8 waybar"
+  },
+  "custom/warp": {
+    "exec": "~/.config/waybar/scripts/warp-status.sh",
+    "return-type": "json",
+    "interval": 5,
+    "signal": 9,
+    "format": "{}",
+    "tooltip": true,
+    "on-click": "~/.config/waybar/scripts/warp-toggle.sh"
+  },
+  "custom/hypridle": {
+    "exec": "~/.config/waybar/scripts/hypridle-status.sh",
+    "return-type": "json",
+    "interval": 10,
+    "signal": 10,
+    "format": "{}",
+    "tooltip": true,
+    "on-click": "systemctl --user restart hypridle.service && pkill -RTMIN+10 waybar"
   },
   "custom/bluetooth": {
     "format": "󰂯",

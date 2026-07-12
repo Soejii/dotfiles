@@ -7,6 +7,9 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=%h/CODE/automation
 Environment=PATH=%h/.local/bin:%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/bin/bash -c 'sleep $$(( 15 + RANDOM %% 300 ))'
 ExecStart=/usr/bin/npm run presensi
+Restart=on-failure
+RestartSec=30
 StandardOutput=append:%h/CODE/automation/presensi_log.txt
 StandardError=append:%h/CODE/automation/presensi_log.txt

@@ -7,6 +7,9 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=%h/CODE/automation
 Environment=PATH=%h/.local/bin:%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/usr/bin/sleep 15
 ExecStart=/usr/bin/npm run daily-review
+Restart=on-failure
+RestartSec=30
 StandardOutput=append:%h/CODE/automation/daily_log.txt
 StandardError=append:%h/CODE/automation/daily_log.txt

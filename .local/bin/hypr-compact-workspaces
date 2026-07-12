@@ -33,7 +33,7 @@ if not SIG:
 
 EVENT_SOCK = f"{RUNTIME}/hypr/{SIG}/.socket2.sock"
 
-TRIGGER_EVENTS = ("closewindow", "movewindow", "movewindowv2", "destroyworkspace")
+TRIGGER_EVENTS = ("openwindow", "closewindow", "movewindow", "movewindowv2", "destroyworkspace")
 
 _compact_lock = threading.Lock()
 
@@ -73,8 +73,9 @@ def compact():
                     continue
                 for c in clients:
                     if c["workspace"]["id"] == ws_id:
+                        addr = c["address"]
                         all_moves.append(
-                            f"dispatch movetoworkspacesilent {idx},address:{c['address']}"
+                            f'dispatch hl.dsp.window.move({{ workspace = {idx}, window = "address:{addr}", follow = false }})'
                         )
                 if ws_id == active_id:
                     new_active = idx
@@ -85,7 +86,7 @@ def compact():
         hyprctl_batch(all_moves)
         if new_active != active_id:
             subprocess.run(
-                ["hyprctl", "dispatch", "workspace", str(new_active)],
+                ["hyprctl", "dispatch", f"hl.dsp.focus({{ workspace = {new_active} }})"],
                 stdout=subprocess.DEVNULL,
             )
         # Let resulting events drain before releasing the lock

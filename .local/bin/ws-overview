@@ -16,5 +16,5 @@ for ws in sorted(wss, key=lambda w: w['id']):
 
 if [ -n "$SELECTED" ]; then
     WS_ID=$(echo "$SELECTED" | cut -d: -f1)
-    hyprctl dispatch workspace "$WS_ID"
+    hyprctl dispatch "hl.dsp.focus({ workspace = $WS_ID })"
 fi

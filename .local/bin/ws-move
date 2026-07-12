@@ -12,9 +12,9 @@ case "$MONITOR" in
     *)          WS=$N ;;
 esac
 
-hyprctl dispatch movetoworkspacesilent "$WS"
-hyprctl dispatch workspace "$WS"
+hyprctl dispatch "hl.dsp.window.move({ workspace = $WS, follow = false })"
+hyprctl dispatch "hl.dsp.focus({ workspace = $WS })"
 
 if [ "$MONITOR" = "HDMI-A-1" ] && [ "$WS" -gt 10 ]; then
-    hyprctl dispatch renameworkspace "$WS" "$N" 2>/dev/null
+    hyprctl dispatch "hl.dsp.workspace.rename({ workspace = $WS, name = \"$N\" })" 2>/dev/null
 fi

@@ -2,8 +2,10 @@
 Description=Run AppSheet daily-review at 16:15
 
 [Timer]
-OnCalendar=*-*-* 16:15:00
+OnCalendar=*-*-* 16:00:00
 Persistent=true
+WakeSystem=true
+RandomizedDelaySec=34m
 
 [Install]
 WantedBy=timers.target

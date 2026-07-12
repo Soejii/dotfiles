@@ -1,0 +1,6 @@
+[Unit]
+Description=Restart hypridle if its idle-inhibit lock counter is stuck
+
+[Service]
+Type=oneshot
+ExecStart=/home/suji/.local/bin/hypridle-watchdog.sh
