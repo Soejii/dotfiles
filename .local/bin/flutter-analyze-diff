@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# flutter-analyze-diff — run the Flutter analyzer on the repo's pinned SDK, but
+# report only diagnostics in the .dart files that actually changed, plus any
+# error-severity diagnostic anywhere in the repo.
+#
+# Why this exists: the legacy fvm repos here carry hundreds of pre-existing
+# diagnostics (nakula: 1251). A bare `fvm flutter analyze` prints all of them, so
+# a real regression in the diff is invisible in the noise, and an agent that runs
+# it floods its own context window with irrelevant legacy lint.
+#
+# Error-severity lines are never filtered out, wherever they are: an error in an
+# untouched file still breaks the build, so it is always worth seeing.
+#
+# Usage:
+#   flutter-analyze-diff          # working-tree changes: staged + unstaged + untracked
+#   flutter-analyze-diff main     # everything this branch changed vs main, plus the above
+#
+# Exit status: 0 when nothing survives the filter, 1 when something does,
+# 2 on a setup problem. The analyzer's own exit status is deliberately ignored,
+# since it is non-zero whenever legacy issues exist.
+
+set -uo pipefail
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  printf 'flutter-analyze-diff: not inside a git repository\n' >&2
+  exit 2
+}
+cd "$root" || exit 2
+
+base="${1:-}"
+
+paths=$(mktemp) || exit 2
+patterns=$(mktemp) || exit 2
+raw=$(mktemp) || exit 2
+trap 'rm -f "$paths" "$patterns" "$raw"' EXIT
+
+# Repo-relative .dart paths that this change touches.
+{
+  if [[ -n "$base" ]]; then
+    git diff --name-only "$base"...HEAD -- '*.dart'
+  fi
+  git diff --name-only -- '*.dart'                      # unstaged
+  git diff --name-only --cached -- '*.dart'             # staged
+  git ls-files --others --exclude-standard -- '*.dart'  # untracked (new files count)
+} 2>/dev/null | sed '/^$/d' | sort -u >"$paths"
+
+# The analyzer prints "<severity> • <message> • <path>:<line>:<col> • <rule>",
+# so anchoring on " • <path>:" cannot collide with a message that merely
+# mentions a filename.
+sed 's|^| • |; s|$|:|' "$paths" >"$patterns"
+
+if [[ -f .fvmrc ]]; then
+  fvm flutter analyze >"$raw" 2>&1
+else
+  printf 'flutter-analyze-diff: no .fvmrc in %s, falling back to bare flutter\n' "$root" >&2
+  flutter analyze >"$raw" 2>&1
+fi
+
+# One pass: keep error-severity lines anywhere, plus any line whose path is ours.
+surviving=$(awk '
+  NR == FNR { pats[++n] = $0; next }
+  /^[[:space:]]*error •/ { print; next }
+  {
+    for (i = 1; i <= n; i++) {
+      if (index($0, pats[i])) { print; next }
+    }
+  }
+' "$patterns" "$raw")
+
+total=$(grep -c ' • ' "$raw")
+kept=0
+[[ -n "$surviving" ]] && kept=$(printf '%s\n' "$surviving" | grep -c ' • ')
+changed=$(wc -l <"$paths" | tr -d ' ')
+
+printf 'flutter-analyze-diff: %s changed .dart file(s); %s of %s diagnostic(s) in scope\n' \
+  "$changed" "$kept" "$total"
+
+if [[ "$kept" -eq 0 ]]; then
+  printf 'clean: no diagnostics in the changed files, no errors anywhere\n'
+  exit 0
+fi
+
+printf '%s\n' "$surviving"
+exit 1
