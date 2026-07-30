@@ -6,6 +6,7 @@
 #   cockpit spawn [flags] <name> "<task>" [model] [dir]
 #   cockpit say <name> "<task>" [dir]         queue follow-up in the same tab
 #   cockpit ls | status                      show registered workers
+#   cockpit errors [window]                  recent provider stream errors
 #   cockpit stop|restart <name>              control a worker tab
 #   cockpit forget <name> [--force] [--worktree]
 #   cockpit fork <name> [new-name] [task]    fork an overgrown session
@@ -37,6 +38,13 @@ SERVER_PID_FILE="${ROOT}/server.pid"
 SERVER_LOG="${ROOT}/opencode-server.log"
 SERVER_LOCK="${ROOT}/server.lock"
 REGISTRY_LOCK="${ROOT}/registry.lock"
+# opencode logs provider stream errors to its own structured log and never to
+# stdout, so SERVER_LOG above cannot see them. Without this, a provider outage
+# renders as an ordinary silent pane: see the 2026-07-30 gpt-5.6-sol stall.
+PROVIDER_LOG="${COCKPIT_PROVIDER_LOG:-${XDG_DATA_HOME:-$HOME/.local/share}/opencode/log/opencode.log}"
+# Retry backoff tops out around 134s, so this window comfortably covers an
+# active retry loop while ageing out errors a worker already recovered from.
+ERR_WINDOW="${COCKPIT_ERR_WINDOW:-900}"
 
 umask 077
 
@@ -80,6 +88,9 @@ validate_name() {
 validate_port_and_max() {
   [[ "$PORT" =~ ^[0-9]+$ ]] && (( PORT >= 1 && PORT <= 65535 )) || die "COCKPIT_PORT must be an integer from 1 to 65535"
   [[ "$MAX_WORKERS" =~ ^[0-9]+$ ]] && (( MAX_WORKERS >= 1 )) || die "COCKPIT_MAX must be a positive integer"
+  # Checked here, before any caller has allocated a temp file to leak, so a bad
+  # value cannot abort mid-scan.
+  [[ "$ERR_WINDOW" =~ ^[0-9]+$ ]] || die "COCKPIT_ERR_WINDOW must be a whole number of seconds, got '$ERR_WINDOW'"
 }
 
 worker_path() {
@@ -254,6 +265,154 @@ warn_if_still_running() {
       return 1
     fi
   done
+}
+
+validate_window() {
+  [[ "$1" =~ ^[0-9]+$ ]] || die "window must be a whole number of seconds, got '$1'"
+}
+
+# Emit "sid<TAB>count<TAB>age_seconds<TAB>kind<TAB>model" on stdout for every
+# session with provider stream errors inside the window. One pass over the log
+# tail serves every worker, so ls stays cheap no matter how many are registered.
+#
+# Returns non-zero if the scan itself failed. Callers MUST surface that rather
+# than reporting an empty result, because a diagnostic tool that answers "no
+# errors" when it actually means "I could not look" is worse than no tool.
+stream_error_map() {
+  local window="${1:-$ERR_WINDOW}"
+  [[ -f "$PROVIDER_LOG" ]] || return 0
+  validate_window "$window"
+  /usr/bin/python3 -c '
+import datetime, os, re, sys
+
+path, window = sys.argv[1], int(sys.argv[2])
+size = os.path.getsize(path)
+TAIL = 4 * 1024 * 1024
+truncated = size > TAIL
+with open(path, "rb") as fh:
+    if truncated:
+        # Seek one byte early: if that byte is the newline ending the previous
+        # line, readline() eats just that newline and no real line is lost.
+        # Seeking exactly to size-TAIL would swallow a whole valid line whenever
+        # the boundary happened to land on a line start.
+        fh.seek(size - TAIL - 1)
+        fh.readline()
+    data = fh.read().decode("utf-8", "replace")
+
+# Log timestamps are UTC ("...Z") while the box runs WIB, so compare in UTC.
+now = datetime.datetime.now(datetime.timezone.utc)
+# A log written by a server whose clock runs slightly ahead would otherwise have
+# its newest errors discarded as "negative age" exactly when they matter most.
+SKEW_GRACE = 300.0
+ts_re = re.compile(r"timestamp=(\S+)")
+sid_re = re.compile(r"session\.id=(\S+)")
+kind_re = re.compile(r"error\.error=\"([A-Za-z_]+)")
+model_re = re.compile(r"modelID=(\S+)")
+
+def parse_ts(text):
+    try:
+        return datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+agg = {}
+oldest = None
+for line in data.split("\n"):
+    ts = ts_re.search(line)
+    if oldest is None and ts:
+        # The log is chronological, so the first timestamp we see is how far back
+        # the tail actually reached.
+        oldest = parse_ts(ts.group(1))
+    if "level=ERROR" not in line or "stream error" not in line:
+        continue
+    sid = sid_re.search(line)
+    if not ts or not sid:
+        continue
+    when = parse_ts(ts.group(1))
+    if when is None:
+        continue
+    age = (now - when).total_seconds()
+    if age < -SKEW_GRACE or age > window:
+        continue
+    age = max(0.0, age)
+    kind = kind_re.search(line)
+    kind = kind.group(1) if kind else "Error"
+    if kind == "AI_APICallError" and "overloaded" in line:
+        kind = "overload"
+    elif kind == "ProviderHeaderTimeoutError":
+        kind = "hdrtimeout"
+    elif kind.startswith("AI_"):
+        kind = kind[3:]
+    model = model_re.search(line)
+    model = model.group(1) if model else "-"
+    row = agg.setdefault(sid.group(1), {"n": 0, "age": age, "kind": kind, "model": model})
+    row["n"] += 1
+    if age < row["age"]:                # report the most recent error, not the first
+        row["age"], row["kind"], row["model"] = age, kind, model
+
+for sid, row in sorted(agg.items(), key=lambda kv: kv[1]["age"]):
+    print("%s\t%d\t%d\t%s\t%s" % (sid, row["n"], int(row["age"]), row["kind"], row["model"]))
+
+# Say so when the fixed tail could not reach back as far as the window asked for,
+# rather than quietly under-reporting on a busy log.
+if truncated and oldest is not None:
+    reach = (now - oldest).total_seconds()
+    if reach < window:
+        print(
+            "cockpit: warning: scanned only the last %d MiB, reaching back %ds of the %ds window; older errors are not shown"
+            % (TAIL // (1024 * 1024), int(reach), window),
+            file=sys.stderr,
+        )
+' "$PROVIDER_LOG" "$window" || {
+    warn "could not scan '$PROVIDER_LOG' for provider errors"
+    warn "treat that as UNKNOWN, not as 'no errors'"
+    return 1
+  }
+}
+
+worker_for_session() {
+  local target="$1" record name
+  [[ -n "$target" ]] || return 0
+  shopt -s nullglob
+  for record in "$WORKERS"/*; do
+    [[ -d "$record" ]] || continue
+    name="${record##*/}"
+    if [[ "$(read_field "$name" session_id)" == "$target" ]]; then
+      printf '%s' "$name"
+      shopt -u nullglob
+      return 0
+    fi
+  done
+  shopt -u nullglob
+}
+
+show_provider_errors() {
+  local window="${1:-$ERR_WINDOW}" esid ecount eage ekind emodel name found=0
+  local rows scan_ok=1
+  init_runtime
+  validate_window "$window"
+  [[ -f "$PROVIDER_LOG" ]] || die "opencode log not found at '$PROVIDER_LOG'"
+  # A temp file rather than process substitution, so the scan's exit status is
+  # observable and a failed scan is never reported as a clean bill of health.
+  rows="$(mktemp "${ROOT}/errscan.XXXXXX")"
+  stream_error_map "$window" >"$rows" || scan_ok=0
+  printf '%-13s %-16s %-25s %-6s %-6s %s\n' SESSION WORKER MODEL COUNT LAST KIND
+  while IFS=$'\t' read -r esid ecount eage ekind emodel; do
+    [[ -n "$esid" ]] || continue
+    found=1
+    name="$(worker_for_session "$esid")"
+    printf '%-13.13s %-16.16s %-25.25s %-6.6s %-6.6s %s\n' \
+      "$esid" "${name:--}" "$emodel" "$ecount" "$(format_age "$eage")" "$ekind"
+  done <"$rows"
+  rm -f "$rows"
+  if (( scan_ok == 0 )); then
+    printf 'cockpit: the log scan FAILED, so this is not a clean bill of health. Check the log by hand.\n'
+  elif (( found == 0 )); then
+    printf 'cockpit: no provider stream errors in the last %s.\n' "$(format_age "$window")"
+  else
+    printf 'cockpit: these are retries, not crashes. opencode backs off silently and streams nothing meanwhile.\n'
+  fi
+  printf 'cockpit: full log: grep %s %s | tail -20\n' "'level=ERROR'" "$PROVIDER_LOG"
 }
 
 rotate_server_log() {
@@ -913,7 +1072,10 @@ format_age() {
 }
 
 show_status() {
-  local sessions record name status model sid short dir exit_code created age context metrics now overgrown=()
+  local sessions record name status model sid short dir exit_code created age context metrics now
+  local errs esid ecount eage ekind emodel overgrown=() stalling=()
+  local errrows scan_ok=1
+  local -A err_by_session=()
   ensure_server
   init_runtime
   sessions="$(mktemp "${ROOT}/sessions.XXXXXX")"
@@ -921,7 +1083,14 @@ show_status() {
     rm -f "$sessions"
     die "could not read opencode sessions"
   }
-  printf '%-16s %-9s %-25s %-13s %-5s %-7s %-10s %s\n' NAME STATUS MODEL SESSION EXIT AGE CONTEXT DIR
+  errrows="$(mktemp "${ROOT}/errscan.XXXXXX")"
+  stream_error_map >"$errrows" || scan_ok=0
+  while IFS=$'\t' read -r esid ecount eage ekind emodel; do
+    [[ -n "$esid" ]] || continue
+    err_by_session["$esid"]="${ecount}x${ekind}"
+  done <"$errrows"
+  rm -f "$errrows"
+  printf '%-16s %-9s %-25s %-13s %-5s %-7s %-10s %-13s %s\n' NAME STATUS MODEL SESSION EXIT AGE CONTEXT ERR DIR
   now="$(date +%s)"
   shopt -s nullglob
   for record in "$WORKERS"/*; do
@@ -949,13 +1118,25 @@ show_status() {
     if [[ "$context" =~ ^[0-9]+$ ]] && (( context >= 200000 )); then
       overgrown+=("$name")
     fi
-    printf '%-16.16s %-9.9s %-25.25s %-13.13s %-5.5s %-7.7s %-10.10s %s\n' \
-      "$name" "$status" "$model" "$short" "$exit_code" "$(format_age "$age")" "$context" "$dir"
+    errs="-"
+    if [[ -n "$sid" && -n "${err_by_session[$sid]:-}" ]]; then
+      errs="${err_by_session[$sid]}"
+      stalling+=("${name}=${errs}")
+    fi
+    printf '%-16.16s %-9.9s %-25.25s %-13.13s %-5.5s %-7.7s %-10.10s %-13.13s %s\n' \
+      "$name" "$status" "$model" "$short" "$exit_code" "$(format_age "$age")" "$context" "$errs" "$dir"
   done
   shopt -u nullglob
   rm -f "$sessions"
   if (( ${#overgrown[@]} > 0 )); then
     printf 'cockpit: large context detected for: %s. Consider `cockpit fork <name>`.\n' "${overgrown[*]}"
+  fi
+  if (( ${#stalling[@]} > 0 )); then
+    printf 'cockpit: provider stream errors in the last %s: %s\n' "$(format_age "$ERR_WINDOW")" "${stalling[*]}"
+    printf 'cockpit: a silent pane with frozen CONTEXT is a retry loop, not deep thinking. Run `cockpit errors`.\n'
+  fi
+  if (( scan_ok == 0 )); then
+    printf 'cockpit: the ERR column is UNKNOWN, not clean: the log scan failed. Run `cockpit errors`.\n'
   fi
 }
 
@@ -1085,6 +1266,7 @@ show_help() {
     'cockpit spawn [--replace] [--read-only] <name> "<task>" [model] [dir]' \
     'cockpit say <name> "<task>" [dir]         queue in the same worker tab' \
     'cockpit ls | status                      list registered workers' \
+    'cockpit errors [window-seconds]          recent provider stream errors' \
     'cockpit stop|restart <name>              stop/restart the controller' \
     'cockpit forget <name> [--force] [--worktree]' \
     'cockpit fork <name> [new-name] [task]    fork an existing session' \
@@ -1151,6 +1333,12 @@ case "${1:-up}" in
 
   ls|status)
     show_status
+    ;;
+
+  errors|doctor)
+    # Reads the log directly, so it still explains a session cockpit has
+    # already forgotten or never registered.
+    show_provider_errors "${2:-$ERR_WINDOW}"
     ;;
 
   stop)
