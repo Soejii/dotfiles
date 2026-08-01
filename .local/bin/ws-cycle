@@ -1,0 +1,8 @@
+#!/bin/bash
+# Cycle to the next/previous EXISTING workspace on the (single) monitor.
+# Usage: ws-cycle next | ws-cycle prev
+case "$1" in
+    next) hyprctl dispatch workspace e+1 ;;
+    prev) hyprctl dispatch workspace e-1 ;;
+    *)    echo "usage: ${0##*/} {next|prev}" >&2; exit 1 ;;
+esac

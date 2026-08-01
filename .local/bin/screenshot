@@ -10,7 +10,7 @@ set -euo pipefail
 # Hyprland's keybind spawn PATH omits ~/.local/bin (where grimblast lives) and
 # the like, so resolve grimblast by absolute path and harden PATH for its deps.
 export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-GRIMBLAST="$HOME/.local/bin/grimblast"
+GRIMBLAST="$(command -v grimblast || echo /usr/bin/grimblast)"
 
 mode="${1:-area}"
 dir="$HOME/Pictures/Screenshots"
