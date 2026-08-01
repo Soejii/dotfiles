@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
 """
-Auto-compact Hyprland workspaces.
+Auto-compact Hyprland workspaces — per monitor.
 
 Listens on the Hyprland event socket. When a window close or move leaves a
 gap (e.g. workspaces 1 and 3 occupied with 2 empty), shifts windows down so
-the occupied workspaces are always 1, 2, 3, ... in order.
+the occupied workspaces are always contiguous within each monitor's range.
+
+Monitor ranges:
+  DP-1:       IDs 1-10  (compact to 1, 2, 3, ...)
+  HDMI-A-1:   IDs 11-20 (compact to 11, 12, 13, ...)
 
 Special workspaces (negative IDs) are ignored.
 """
+
+MONITOR_RANGES = {
+    "DP-1": (1, 10),
+    "HDMI-A-1": (11, 20),
+}
 
 import json
 import os
@@ -24,7 +33,7 @@ if not SIG:
 
 EVENT_SOCK = f"{RUNTIME}/hypr/{SIG}/.socket2.sock"
 
-TRIGGER_EVENTS = ("closewindow", "movewindow", "movewindowv2", "destroyworkspace")
+TRIGGER_EVENTS = ("openwindow", "closewindow", "movewindow", "movewindowv2", "destroyworkspace")
 
 _compact_lock = threading.Lock()
 
@@ -46,35 +55,38 @@ def compact():
         return
     try:
         workspaces = hyprctl_json("workspaces")
-        occupied = sorted(
-            ws["id"] for ws in workspaces if ws["id"] > 0 and ws["windows"] > 0
-        )
-        if not occupied:
-            return
-
         active_id = hyprctl_json("activeworkspace")["id"]
+        clients = hyprctl_json("clients")
         new_active = active_id
 
-        moves = []
-        for idx, ws_id in enumerate(occupied, start=1):
-            if ws_id == idx:
+        all_moves = []
+        for mon_name, (lo, hi) in MONITOR_RANGES.items():
+            occupied = sorted(
+                ws["id"] for ws in workspaces
+                if lo <= ws["id"] <= hi and ws["windows"] > 0
+            )
+            if not occupied:
                 continue
-            clients = hyprctl_json("clients")
-            for c in clients:
-                if c["workspace"]["id"] == ws_id:
-                    moves.append(
-                        f"dispatch movetoworkspacesilent {idx},address:{c['address']}"
-                    )
-            if ws_id == active_id:
-                new_active = idx
 
-        if not moves:
+            for idx, ws_id in enumerate(occupied, start=lo):
+                if ws_id == idx:
+                    continue
+                for c in clients:
+                    if c["workspace"]["id"] == ws_id:
+                        addr = c["address"]
+                        all_moves.append(
+                            f'dispatch hl.dsp.window.move({{ workspace = {idx}, window = "address:{addr}", follow = false }})'
+                        )
+                if ws_id == active_id:
+                    new_active = idx
+
+        if not all_moves:
             return
 
-        hyprctl_batch(moves)
+        hyprctl_batch(all_moves)
         if new_active != active_id:
             subprocess.run(
-                ["hyprctl", "dispatch", "workspace", str(new_active)],
+                ["hyprctl", "dispatch", f"hl.dsp.focus({{ workspace = {new_active} }})"],
                 stdout=subprocess.DEVNULL,
             )
         # Let resulting events drain before releasing the lock

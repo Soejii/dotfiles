@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Screenshot helper for Hyprland keybinds (grimblast wrapper).
+# The keybind passes only a simple mode arg, so Hyprland never has to
+# expand $(...) or ~ itself (which it doesn't do in exec, breaking the path).
+#   screenshot area    -> interactive region select
+#   screenshot screen  -> whole screen (all monitors)
+#   screenshot output  -> the currently focused monitor only
+set -euo pipefail
+
+# Hyprland's keybind spawn PATH omits ~/.local/bin (where grimblast lives) and
+# the like, so resolve grimblast by absolute path and harden PATH for its deps.
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+GRIMBLAST="$HOME/.local/bin/grimblast"
+
+mode="${1:-area}"
+dir="$HOME/Pictures/Screenshots"
+mkdir -p "$dir"
+ts="$(date +'%F_%H-%M-%S')"
+
+case "$mode" in
+  area)   "$GRIMBLAST" --notify copysave area   "$dir/area_$ts.png" ;;
+  screen) "$GRIMBLAST" --notify copysave screen "$dir/full_$ts.png" ;;
+  output) "$GRIMBLAST" --notify copysave output "$dir/mon_$ts.png" ;;
+  *) echo "usage: ${0##*/} {area|screen|output}" >&2; exit 1 ;;
+esac

@@ -51,3 +51,5 @@ application/json=code.desktop
 application/xml=code.desktop
 text/x-go=code.desktop
 text/x-rust=code.desktop
+x-scheme-handler/accela=accela.desktop
+x-scheme-handler/antigravity=antigravity.desktop

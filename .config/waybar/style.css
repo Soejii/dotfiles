@@ -59,11 +59,36 @@ window#waybar.empty #window {
 #network,
 #memory,
 #pulseaudio,
+#custom-volume,
+#custom-warp,
 #battery,
 #custom-bluetooth,
 #custom-powermenu {
   padding: 4px 12px;
   color: #cdd6f4;
+}
+
+/* invisible when idle timers are healthy (empty text, no padding) */
+#custom-hypridle.inhibited {
+  padding: 4px 12px;
+  color: #f9e2af;
+}
+
+#custom-hypridle.dead {
+  padding: 4px 12px;
+  color: #f38ba8;
+}
+
+#custom-warp.on {
+  color: #a6e3a1;
+}
+
+#custom-warp.connecting {
+  color: #f9e2af;
+}
+
+#custom-warp.off {
+  color: #585b70;
 }
 
 #custom-bluetooth {
@@ -82,7 +107,8 @@ window#waybar.empty #window {
   color: #f38ba8;
 }
 
-#pulseaudio.muted {
+#pulseaudio.muted,
+#custom-volume.muted {
   color: #585b70;
 }
 
@@ -93,4 +119,18 @@ window#waybar.empty #window {
 
 #network.disconnected {
   color: #f38ba8;
+}
+
+/* Tooltips (incl. the clock calendar) — enlarge; default GTK tooltip font is tiny. */
+tooltip {
+  background: rgba(17, 17, 27, 0.96);
+  border: 1px solid rgba(137, 180, 250, 0.4);
+  border-radius: 8px;
+}
+
+tooltip label {
+  font-family: "JetBrainsMono Nerd Font Mono", monospace;
+  font-size: 18px;
+  color: #cdd6f4;
+  padding: 6px;
 }
