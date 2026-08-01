@@ -1,0 +1,19 @@
+#!/bin/bash
+# Workspace overview — list all workspaces in wofi, click one to switch.
+# Shows workspace name + window count.
+
+SELECTED=$(hyprctl workspaces -j | python3 -c "
+import json, sys
+wss = json.load(sys.stdin)
+for ws in sorted(wss, key=lambda w: w['id']):
+    if ws['id'] <= 0:
+        continue
+    name = ws.get('name', str(ws['id']))
+    wins = ws.get('windows', 0)
+    print(f\"{ws['id']}: ws {name}  ({wins} windows)\")
+" | wofi --dmenu --prompt="Workspace" --width=500 --height=400 --cache-file=/dev/null)
+
+if [ -n "$SELECTED" ]; then
+    WS_ID=$(echo "$SELECTED" | cut -d: -f1)
+    hyprctl dispatch workspace "$WS_ID"
+fi

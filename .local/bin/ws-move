@@ -1,0 +1,5 @@
+#!/bin/bash
+# Move the active window to workspace N and follow it there.
+# Single-monitor laptop (eDP-1): 1-10 map directly.
+N=$1
+hyprctl dispatch movetoworkspace "$N"

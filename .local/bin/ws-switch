@@ -1,0 +1,6 @@
+#!/bin/bash
+# Switch to workspace N. Single-monitor laptop (eDP-1): 1-10 map directly.
+# Kept as a script (rather than a native bind) so the config and the desktop
+# branch share the same ws-* interface.
+N=$1
+hyprctl dispatch workspace "$N"
