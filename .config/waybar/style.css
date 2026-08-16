@@ -60,7 +60,6 @@ window#waybar.empty #window {
 #memory,
 #pulseaudio,
 #custom-volume,
-#custom-warp,
 #battery,
 #custom-bluetooth,
 #custom-powermenu {
@@ -77,18 +76,6 @@ window#waybar.empty #window {
 #custom-hypridle.dead {
   padding: 4px 12px;
   color: #f38ba8;
-}
-
-#custom-warp.on {
-  color: #a6e3a1;
-}
-
-#custom-warp.connecting {
-  color: #f9e2af;
-}
-
-#custom-warp.off {
-  color: #585b70;
 }
 
 #custom-bluetooth {
@@ -110,6 +97,11 @@ window#waybar.empty #window {
 #pulseaudio.muted,
 #custom-volume.muted {
   color: #585b70;
+}
+
+/* above 100%: amplified past the hardware's clean range */
+#custom-volume.overamplified {
+  color: #f9e2af;
 }
 
 #custom-powermenu {

@@ -1,5 +1,16 @@
 #!/bin/bash
 # Move the active window to workspace N and follow it there.
 # Single-monitor laptop (eDP-1): 1-10 map directly.
+#
+# Uses the lua dispatcher form; see hypr-dispatch for why the old
+# `hyprctl dispatch movetoworkspace N` silently stopped working.
+
+DISPATCH="$(dirname "$(readlink -f "$0")")/hypr-dispatch"
+
 N=$1
-hyprctl dispatch movetoworkspace "$N"
+# N is interpolated into a lua string, so keep it strictly numeric.
+case "$N" in
+    ''|*[!0-9]*) echo "usage: ${0##*/} <workspace-number>" >&2; exit 1 ;;
+esac
+
+exec "$DISPATCH" "hl.dsp.window.move({ workspace = \"$N\" })"

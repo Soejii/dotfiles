@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Run a Hyprland dispatcher and fail LOUDLY.
+#
+# Why this exists: `hyprctl dispatch` exits 0 even when the dispatch itself
+# errors. Under Hyprland 0.55 with a lua config (~/.config/hypr/hyprland.lua)
+# hyprctl parses dispatch arguments as lua, so every legacy call of the form
+#   hyprctl dispatch workspace e+1
+# became a syntax error that printed to stdout and still returned success.
+# The ws-* scripts were silently dead from the lua migration (5213599,
+# 2026-08-01) until 2026-08-16 for exactly that reason. Checking the reply,
+# rather than the exit status, is the only way to notice.
+#
+# Usage: hypr-dispatch 'hl.dsp.focus({ workspace = "3" })'
+
+set -uo pipefail
+
+if [ $# -ne 1 ]; then
+  printf 'usage: %s <lua-dispatcher>\n  e.g. %s '\''hl.dsp.focus({ workspace = "3" })'\''\n' \
+    "${0##*/}" "${0##*/}" >&2
+  exit 2
+fi
+
+out="$(hyprctl dispatch "$1" 2>&1)"
+
+[ "$out" = "ok" ] && exit 0
+
+printf '%s: dispatch failed\n  call: %s\n  reply: %s\n' "${0##*/}" "$1" "$out" >&2
+command -v notify-send >/dev/null 2>&1 &&
+  notify-send -a hyprctl -u critical "hyprctl dispatch failed" "$1"
+exit 1

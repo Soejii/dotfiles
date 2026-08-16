@@ -1,8 +1,15 @@
 #!/bin/bash
 # Cycle to the next/previous EXISTING workspace on the (single) monitor.
 # Usage: ws-cycle next | ws-cycle prev
+#
+# Uses the lua dispatcher form: under Hyprland 0.55 with a lua config, hyprctl
+# parses dispatch args as lua, so the old `hyprctl dispatch workspace e+1`
+# was a silent syntax error. See hypr-dispatch.
+
+DISPATCH="$(dirname "$(readlink -f "$0")")/hypr-dispatch"
+
 case "$1" in
-    next) hyprctl dispatch workspace e+1 ;;
-    prev) hyprctl dispatch workspace e-1 ;;
+    next) exec "$DISPATCH" 'hl.dsp.focus({ workspace = "e+1" })' ;;
+    prev) exec "$DISPATCH" 'hl.dsp.focus({ workspace = "e-1" })' ;;
     *)    echo "usage: ${0##*/} {next|prev}" >&2; exit 1 ;;
 esac

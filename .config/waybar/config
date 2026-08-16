@@ -11,7 +11,6 @@
   ],
   "modules-right": [
     "network",
-    "custom/warp",
     "custom/hypridle",
     "memory",
     "custom/volume",
@@ -66,26 +65,16 @@
     "tooltip-format": "{percentage}% used"
   },
   "custom/volume": {
-    "exec": "~/.config/waybar/scripts/audio-status.sh",
+    "exec": "~/.config/waybar/scripts/audio-status.sh --watch",
     "return-type": "json",
-    "interval": 1,
-    "signal": 8,
+    "restart-interval": 5,
     "format": "{}",
     "tooltip": true,
     "on-click": "pavucontrol",
     "on-click-right": "~/.config/waybar/scripts/audio-switch.sh",
-    "on-click-middle": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle && pkill -RTMIN+8 waybar",
-    "on-scroll-up": "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+ && pkill -RTMIN+8 waybar",
-    "on-scroll-down": "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- && pkill -RTMIN+8 waybar"
-  },
-  "custom/warp": {
-    "exec": "~/.config/waybar/scripts/warp-status.sh",
-    "return-type": "json",
-    "interval": 5,
-    "signal": 9,
-    "format": "{}",
-    "tooltip": true,
-    "on-click": "~/.config/waybar/scripts/warp-toggle.sh"
+    "on-click-middle": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+    "on-scroll-up": "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+",
+    "on-scroll-down": "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"
   },
   "custom/hypridle": {
     "exec": "~/.config/waybar/scripts/hypridle-status.sh",
@@ -94,7 +83,7 @@
     "signal": 10,
     "format": "{}",
     "tooltip": true,
-    "on-click": "systemctl --user restart hypridle.service && pkill -RTMIN+10 waybar"
+    "on-click": "~/.config/waybar/scripts/hypridle-restart.sh"
   },
   "custom/bluetooth": {
     "format": "󰂯",

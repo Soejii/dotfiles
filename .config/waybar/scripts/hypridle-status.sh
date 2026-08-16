@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
 # Waybar custom/hypridle module.
-# Shows hypridle's D-Bus idle-inhibit lock count (parsed from its journal).
-# Invisible when locks == 0; coffee icon while idle is inhibited; red if dead.
+# Invisible while hypridle is alive; red marker if it has died.
+#
+# Rewritten 2026-08-16. The previous version came from the desktop (3be91a2) and
+# health-checked `systemctl --user is-active hypridle.service`. On this laptop
+# hypridle is spawned directly by Hyprland (hyprland.lua: exec_cmd("hypridle"))
+# and that unit is intentionally disabled, so the check was always false and the
+# module sat permanently red while idle was in fact working. The old inhibit-lock
+# counter is gone with it: it read the unit's journal, and a Hyprland-spawned
+# process has none (its stdout is not captured in hyprland.log either).
 
-if ! systemctl --user is-active --quiet hypridle.service; then
-  printf '{"text":"󰒲 !","tooltip":"hypridle is NOT running — click to (re)start it","class":"dead"}\n'
+set -uo pipefail
+
+pid="$(pgrep -x hypridle | head -n1)"
+
+if [ -z "$pid" ]; then
+  printf '{"text":"󰒲 !","tooltip":"hypridle is NOT running — no dim, lock or suspend.\\nClick to restart it.","class":"dead"}\n'
   exit 0
 fi
 
-inv="$(systemctl --user show -p InvocationID --value hypridle.service)"
-locks="$(journalctl --user -u hypridle.service "_SYSTEMD_INVOCATION_ID=$inv" \
-  -n 2000 --no-pager -o cat 2>/dev/null \
-  | grep -oP 'Inhibit locks: \K-?[0-9]+' | tail -n1)"
-locks="${locks:-0}"
-
-if [ "$locks" -gt 0 ]; then
-  printf '{"text":"󰅶 %s","tooltip":"idle inhibited (%s locks) — no dim/lock/suspend.\\nNormal while a video plays; click to restart hypridle if stuck.","class":"inhibited"}\n' "$locks" "$locks"
-else
-  printf '{"text":"","tooltip":"idle timers active"}\n'
-fi
+since="$(ps -o etime= -p "$pid" 2>/dev/null | tr -d ' ')"
+printf '{"text":"","tooltip":"hypridle running (pid %s, up %s)\\nidle timers active"}\n' \
+  "$pid" "${since:-unknown}"

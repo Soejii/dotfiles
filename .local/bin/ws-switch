@@ -2,5 +2,16 @@
 # Switch to workspace N. Single-monitor laptop (eDP-1): 1-10 map directly.
 # Kept as a script (rather than a native bind) so the config and the desktop
 # branch share the same ws-* interface.
+#
+# Uses the lua dispatcher form; see hypr-dispatch for why the old
+# `hyprctl dispatch workspace N` silently stopped working.
+
+DISPATCH="$(dirname "$(readlink -f "$0")")/hypr-dispatch"
+
 N=$1
-hyprctl dispatch workspace "$N"
+# N is interpolated into a lua string, so keep it strictly numeric.
+case "$N" in
+    ''|*[!0-9]*) echo "usage: ${0##*/} <workspace-number>" >&2; exit 1 ;;
+esac
+
+exec "$DISPATCH" "hl.dsp.focus({ workspace = \"$N\" })"
