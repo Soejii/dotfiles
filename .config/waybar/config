@@ -14,6 +14,7 @@
     "custom/hypridle",
     "memory",
     "custom/volume",
+    "bluetooth",
     "battery",
     "custom/powermenu"
   ],
@@ -85,9 +86,15 @@
     "tooltip": true,
     "on-click": "~/.config/waybar/scripts/hypridle-restart.sh"
   },
-  "custom/bluetooth": {
-    "format": "󰂯",
-    "tooltip": false,
+  "bluetooth": {
+    "format-on": "󰂯",
+    "format-off": "󰂲",
+    "format-disabled": "󰂲",
+    "format-connected": "󰂱 {num_connections}",
+    "tooltip-format": "{controller_alias}\nbluetooth {status}",
+    "tooltip-format-connected": "{controller_alias}\nbluetooth {status}\n\n{device_enumerate}",
+    "tooltip-format-enumerate-connected": "{device_alias}",
+    "tooltip-format-enumerate-connected-battery": "{device_alias} ({device_battery_percentage}%)",
     "on-click": "blueman-manager"
   },
   "battery": {

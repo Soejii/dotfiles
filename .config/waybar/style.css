@@ -61,7 +61,7 @@ window#waybar.empty #window {
 #pulseaudio,
 #custom-volume,
 #battery,
-#custom-bluetooth,
+#bluetooth,
 #custom-powermenu {
   padding: 4px 12px;
   color: #cdd6f4;
@@ -78,8 +78,14 @@ window#waybar.empty #window {
   color: #f38ba8;
 }
 
-#custom-bluetooth {
+#bluetooth {
   color: #89b4fa;
+}
+
+/* dimmed when the adapter is off or blocked */
+#bluetooth.off,
+#bluetooth.disabled {
+  color: #585b70;
 }
 
 #clock {
