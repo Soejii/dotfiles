@@ -113,6 +113,12 @@ hl.config({
         -- fullscreen when any tiled window (Steam popup, dialog, etc.) grabs focus.
         -- 0 = ignore: keep the fullscreen window fullscreen, new window stays behind.
         on_focus_under_fullscreen = 0,
+
+        -- Safety net for the 10-min DPMS-off listener in hypridle.conf. Without
+        -- this, waking the screen rests entirely on hypridle's on-resume, so a
+        -- wedged hypridle leaves a black screen that looks like a dead machine.
+        -- With it, Hyprland itself wakes the display on any keypress.
+        key_press_enables_dpms    = true,
     },
 
     input = {
