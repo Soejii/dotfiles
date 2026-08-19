@@ -1,70 +1,86 @@
-# Context for the next Claude — read this first
+# Context for the next Claude, read this first
 
-You are running on a **freshly installed Arch Linux desktop**, mid-migration from
-Windows 11. This file is orientation. **The execution steps live in `ARCH-SETUP.md`
-— read it and run it end to end.** This file tells you the *why* and *where*.
+Orientation for this machine. The *rules* for how to work live in `CLAUDE.md`
+(global) and `~/.claude/projects/-home-suji/memory/MEMORY.md` (past incidents).
+This file is the *terrain*: what the machine is, where things live, and which
+parts have a history of surprising people.
 
-## Who / what
-- User **sujia** (GitHub `Soejii`, work org `sidigs-id`). Flutter/mobile dev + academic research. Speaks Indonesian; replies in English.
-- Toolchain: Claude Code (you), opencode with deepseek/gemini workers, RTK, Flutter. His global working style + delegation rules return once `~/.claude` is restored (see below) — follow them.
-- This is his **main desktop**. Decision: **full wipe, no dual-boot**. Already executed.
-- This repo = his Hyprland dotfiles. You should be on branch **desktop** (`git -C ~/.dotfiles ... checkout desktop` if not).
+Everything below was verified on the machine on **2026-08-19**. If something here
+disagrees with what you observe, trust the machine and fix this file.
 
-## Hardware
-Ryzen 7 5700X · **RX 9060 XT (RDNA4, all-AMD)** · ASRock B550M Pro4 (BIOS P2.80) ·
-32GB DDR4-3600 · displays: **MSI MAG 275QF 2K@170** (primary) + **27B1H2 1080p** ·
-wired **Realtek GbE**. Two NVMes: **Lexar NM790 2TB (wiped → this Arch install)** and
-**ADATA 710 477GB (NOT wiped → holds the backup)**.
+## Who
 
-## What already happened (before the wipe)
-Everything irreplaceable was backed up onto the **ADATA disk, which was deliberately
-left untouched.** Only the Lexar got wiped + Arch.
+- **Soejii** (`ninkaishou27@gmail.com`), Flutter/mobile dev plus academic research.
+  Work org `sidigs-id`. Writes Indonesian, wants replies in English.
+- Timezone WIB. College semester starts late Aug 2026, so expect PDF-heavy work.
 
-**The ADATA is still NTFS** (old Windows label "Other Stuff"). Mount it to reach the backup:
+## Hardware and OS
+
+Arch Linux, kernel **6.18 LTS**, Hyprland **0.56** (Lua config, not hyprlang).
+
+- Ryzen 7 5700X, 32GB DDR4, **RX 9060 XT** (Navi 44, RDNA4, all AMD).
+- Displays: **DP-1** = MSI MAG 275QF, 2560x1440@180, primary, at `0x0`.
+  **HDMI-A-1** = 1080p@100 at `2560x0`. These connector names are correct;
+  older notes called them guesses.
+- Disks: `nvme0n1` = system (btrfs root, `/boot` vfat).
+  `nvme1n1` = **btrfs, label `Games`, mounted at `/mnt/adata`**. Steam library
+  lives there.
+- Display manager is **SDDM**. Not LightDM, which breaks Hyprland input.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `~/CODE` | 34 repos. SIDIGS Flutter apps: `nakula`, `chiron`, `gaia`, `icarus`, `arjuna`, `karna` |
+| `~/CODE/KEYSTORE` | Android signing keys plus a GCP service account json. **Irreplaceable, never leak** |
+| `~/.dotfiles` | Bare git repo, work tree is `$HOME`, branch `desktop`, remote `Soejii/dotfiles` |
+| `~/.claude` | Claude Code config, skills, agents, memory |
+| `~/.local/bin` | Hand written tooling (`cockpit`, `flutter-analyze-diff`, watchdogs, recovery scripts) |
+
+The dotfiles repo takes an explicit git dir on every command, and
+`status.showUntrackedFiles` is off, so only tracked files ever appear:
+
 ```bash
-lsblk -f                       # find the ~477G NTFS partition (not the root btrfs)
-sudo mkdir -p /mnt/adata
-sudo mount -t ntfs3 /dev/nvmeXn1pY /mnt/adata
-ls /mnt/adata/arch-backup
-```
-Backup contents at `/mnt/adata/arch-backup/`:
-- `backup-20260629-110753/`
-  - `KEYSTORE/` — **19 Android `.jks` signing keys + a GCP service-account json** (irreplaceable)
-  - `KEYSTORE-sha256.txt` — verify the keystores against this after restoring
-  - `env-files/automation_.env` — AppSheet bot credentials
-  - `.claude/`, `opencode/`, `.ssh/`, `.gitconfig`, `Bookmarks`
-- `backup-20260629-110753/CODE-full/` — **all 30 repos with full `.git`** (includes
-  uncommitted + stashed + unpushed work that the GitHub remotes DON'T have)
-- `KEYSTORE-cloud.zip` — same keys, also uploaded to the user's Google Drive
-- `archlinux-x86_64.iso` — the installer that was used (ignore)
-
-## Restoring code (important nuance)
-Prefer restoring `~/CODE` **from `CODE-full`**, not re-cloning — it preserves the
-stashes and uncommitted/unpushed work. `node_modules`, `build`, `.dart_tool` were
-excluded, so regenerate them (`flutter pub get`, `npm i`).
-```bash
-mkdir -p ~/CODE && cp -a /mnt/adata/arch-backup/backup-20260629-110753/CODE-full/. ~/CODE/
-```
-Re-clone (the list in `ARCH-SETUP.md` Phase 9) only if the user wants clean-from-remote instead.
-
-Restore the rest:
-```bash
-cp -a /mnt/adata/arch-backup/backup-20260629-110753/.claude   ~/.claude
-cp -a /mnt/adata/arch-backup/backup-20260629-110753/opencode  ~/.config/opencode
-cp -a /mnt/adata/arch-backup/backup-20260629-110753/.ssh      ~/.ssh && chmod 700 ~/.ssh
-cp /mnt/adata/arch-backup/backup-20260629-110753/.gitconfig   ~/.gitconfig
-mkdir -p ~/CODE/automation && cp /mnt/adata/arch-backup/backup-20260629-110753/env-files/automation_.env ~/CODE/automation/.env
+git --git-dir=$HOME/.dotfiles --work-tree=$HOME <cmd>
 ```
 
-## Gotchas / must-not-miss
-- **KEYSTORE is the one unrecoverable thing.** Restore to `~/CODE/KEYSTORE`, verify SHA256, never leak.
-- 🔒 **Rotate the GitHub token** that was embedded in the old `sidigs` remote URL (it's in that repo's `.git/config` inside CODE-full).
-- **RDNA4 is new** — confirm `vulkaninfo | grep -i radeon` shows the card; if empty, the kernel/firmware is too old, update + reboot.
-- `~/.config/hypr/monitors.conf` has *guessed* connector names (DP-1 / HDMI-A-1) — fix from `hyprctl monitors all` on first boot.
-- The 3 systemd user timers (`appsheet-daily`, `appsheet-presensi`, `claude-ping`) port his old Windows Task Scheduler jobs. The automation needs its `.env` + `npx playwright install chromium`. Enable with `loginctl enable-linger` first.
-- Non-game anchors (no native Linux): MS Office → LibreOffice/web, Illustrator → Inkscape, SPSS → jamovi. Games are all fine on Proton (verified).
+## Subsystems with a history
 
-## Your job
-Read `ARCH-SETUP.md` and execute it. Pause only at the 🟡 ME steps (logins, mounting/
-decrypting the backup, monitor confirmation, anchor-app choices). At the end, report
-what passed, what still needs the user, and anything broken.
+Do not rediscover these. Each has a memory file with the full diagnosis; read it
+before you touch the area.
+
+- **Idle, lock and suspend.** hypridle, a watchdog timer, and hyprlock interact
+  badly and have caused three separate incidents. `hyprctl dispatch dpms` is a
+  broken no-op under Lua, and it toggles, so never live test it.
+- **Audio.** Chromium and Electron apps drive the *hardware* capture mixer, which
+  drags the mic down for every other app. Fixed with PipeWire's
+  `block-source-volume` quirk in `~/.config/pipewire/pipewire-pulse.conf.d/`.
+- **Networking.** Mudfish Full VPN kills the IPv4 default route and looks like a
+  machine that needs a reboot. Use Item mode. Recovery script exists.
+- **Delegation.** Implementation goes to opencode workers through `cockpit`,
+  default model family **Luna**. Older notes say deepseek/gemini; that is wrong now.
+- **Streaming.** OBS is the Flatpak build, config at `~/.config/obs-studio`, with
+  `~/.var/app` symlinked to it. GG Strive stream tooling in `~/CODE/strive-stream`.
+
+## Automation
+
+Five systemd **user** timers. They need `loginctl enable-linger`.
+
+- `appsheet-daily`, `appsheet-presensi`, `aktivo-keluar`: work automation, needs
+  its `.env` and `npx playwright install chromium`.
+- `claude-ping`: anchors the rolling Claude usage window. Uses a long lived
+  `setup-token`, never an API key, because that would bill per token.
+- `hypridle-watchdog`: guards the idle stack described above.
+
+Systemd status alone is not proof any of these worked. Read their logs.
+
+## Historical note
+
+This file used to be a migration runbook for the Windows 11 to Arch move of June
+2026. That migration is **finished**. The backup disk it described has since been
+reformatted to btrfs for games, so its recovery instructions would now be actively
+misleading. Both of its outstanding security items are closed: the KEYSTORE is
+restored, and no GitHub token remains embedded in any remote URL in `~/CODE`.
+
+`ARCH-SETUP.md` in this repo is from the same era and is likewise historical. Keep
+it for reference, do not execute it.
