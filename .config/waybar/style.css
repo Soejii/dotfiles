@@ -74,6 +74,13 @@ window#waybar.empty #window {
   color: #f9e2af;
 }
 
+/* Wayland-protocol inhibit: the channel hypridle cannot see. Peach, not yellow,
+   because unlike a normal D-Bus inhibit this means the 5-min lock is broken. */
+#custom-hypridle.waylandinhibit {
+  padding: 4px 12px;
+  color: #fab387;
+}
+
 #custom-hypridle.dead {
   padding: 4px 12px;
   color: #f38ba8;
