@@ -1,0 +1,70 @@
+#!/bin/bash
+# condition_cmd for hypridle's hard-lock listener.
+#   exit 0  = let the hard lock fire
+#   exit 1  = defer, something legitimate wants the screen awake
+#
+# The hard lock exists because an app can block the normal 5-min lock through
+# either inhibit channel, and the Wayland one is invisible to hypridle's counter
+# (the 2026-08-23 Vesktop incident). But a blanket ignore_inhibit also locks
+# during things that genuinely need the screen: a Discord call or screen share,
+# controller-only play, an OBS stream. This tells those apart.
+#
+# It deliberately does NOT use playerctl/MPRIS. That proxy caused the 2026-08-22
+# false positive, and here a wrong "Playing" would silently defer the lock
+# forever, which is the security hole this listener exists to close.
+#
+# Fails CLOSED: if a test cannot be run, we lock. A 45-minute floor that skips
+# on a transient error is not a floor. condition_retry re-runs this every 60s,
+# so a deferral costs at most a minute of extra awake time once the reason ends.
+
+set -u
+U="$(/usr/bin/id -u)"
+
+defer() { /usr/bin/logger -t hypridle-lock-allowed "hard lock deferred: $1"; exit 1; }
+
+# 1. A real voice call or screen share: the client is capturing the microphone.
+#    A leaked idle inhibitor does NOT capture anything, which is what separates
+#    "watching someone's screen share" from "Discord forgot to let go".
+if so="$(/usr/bin/timeout 5 /usr/bin/pactl list source-outputs 2>/dev/null)"; then
+    if printf '%s' "$so" | /usr/bin/grep -qE 'application\.process\.binary = "(vesktop\.bin|discord|electron|chrome|chromium)"'; then
+        defer "a client is capturing the microphone (call or screen share)"
+    fi
+else
+    /usr/bin/logger -t hypridle-lock-allowed "pactl failed; failing closed and locking"
+    exit 0
+fi
+
+# 2. Controller-only play. gamepad-idle-inhibit refreshes this marker about once
+#    a second; libinput ignores joystick nodes, so pad input never resets the
+#    compositor's idle clock and this file is the only evidence of activity.
+GP="/run/user/$U/gamepad-idle-inhibit.active"
+if [ -f "$GP" ]; then
+    now="$(/usr/bin/date +%s)"
+    mt="$(/usr/bin/stat -c %Y "$GP" 2>/dev/null)" || mt=""
+    case "$mt" in
+        ''|*[!0-9]*) ;;
+        *) age=$(( now - mt ))
+           # A NEGATIVE age means the marker was refreshed between our date and
+           # stat calls, i.e. the pad is in use right now. Treating that as
+           # "not fresh" locks mid-match, which is the bug this guard prevents.
+           [ "$age" -lt 0 ] && age=0
+           [ "$age" -le 180 ] && defer "gamepad in use (marker ${age}s old)" ;;
+    esac
+fi
+
+# 3. OBS may be streaming or recording; locking would capture the lock screen.
+if /usr/bin/pgrep -x obs >/dev/null 2>&1 \
+   || /usr/bin/pgrep -f com.obsproject.Studio >/dev/null 2>&1; then
+    defer "OBS is running"
+fi
+
+# 4. A Steam game window is open.
+if cj="$(/usr/bin/timeout 5 /usr/bin/hyprctl clients -j 2>/dev/null)"; then
+    if printf '%s' "$cj" | /usr/bin/jq -e 'any(.[]; ((.class? // "") | tostring | startswith("steam_app")))' >/dev/null 2>&1; then
+        defer "a Steam game window is open"
+    fi
+else
+    /usr/bin/logger -t hypridle-lock-allowed "hyprctl failed; failing closed and locking"
+fi
+
+exit 0
