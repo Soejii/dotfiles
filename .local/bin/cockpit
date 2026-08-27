@@ -191,6 +191,11 @@ server_pid_valid() {
   [[ "$pid" =~ ^[0-9]+$ ]] || return 1
   [[ -r "/proc/${pid}/cmdline" && -e "/proc/${pid}/exe" ]] || return 1
   exe="$(readlink -f "/proc/${pid}/exe")"
+  # An `opencode` self-update mid-session unlinks the running binary, and the
+  # kernel then appends " (deleted)" to the exe symlink. The live server is
+  # still ours, so strip the marker instead of disowning the pid: leaving it
+  # unverified wedges cockpit, which will neither adopt the port nor kill it.
+  exe="${exe% (deleted)}"
   expected="$(readlink -f "$OPENCODE")"
   [[ "$exe" == "$expected" ]] || return 1
 
@@ -454,7 +459,12 @@ ensure_server() {
 
   rotate_server_log
   printf 'cockpit: starting owned opencode server on 127.0.0.1:%s ...\n' "$PORT"
-  nohup "$OPENCODE" serve --hostname 127.0.0.1 --port "$PORT" >>"$SERVER_LOG" 2>&1 &
+  # 8>&- keeps the server from inheriting the lock fd. flock is held on the open
+  # file description, so a server that shares fd 8 keeps SERVER_LOCK held for its
+  # whole life if this shell dies before `flock -u 8` (Ctrl-C, or the unhealthy
+  # `die` below). Every later cockpit call then blocks forever in ensure_server,
+  # including `cockpit down`, so the only way out is killing the server by hand.
+  nohup "$OPENCODE" serve --hostname 127.0.0.1 --port "$PORT" >>"$SERVER_LOG" 2>&1 8>&- &
   started_pid=$!
   printf '%s\n' "$started_pid" >"${SERVER_PID_FILE}.tmp.$$"
   mv -f "${SERVER_PID_FILE}.tmp.$$" "$SERVER_PID_FILE"

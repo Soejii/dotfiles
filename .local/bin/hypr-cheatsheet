@@ -38,6 +38,30 @@ echo "
   SUPER + SHIFT + A  Full  → save + copy
   (auto-saved to ~/Pictures/Screenshots/)
 
+  ── tmux / cockpit ───────────────────
+  Ctrl-b w           Pick a worker tab
+  Ctrl-b d           Detach (all keeps running)
+  Ctrl-b z           Zoom pane fullscreen
+  Ctrl-b %           Split side by side
+  Ctrl-b \"           Split stacked
+  Ctrl-b W           Pull worker in beside orch
+  Ctrl-b E           Send worker back to own tab
+  Ctrl-b CTRL + W    Kill worker (agent + tab)
+  Scroll, then q     Read back, q to exit
+  (closing a tab now kills its agent too)
+
+  ── cockpit (typed in a shell) ───────
+  cockpit            Launch / attach
+  cockpit ls         All workers + status
+  cockpit spawn ...  New worker tab
+  cockpit say X      Follow-up to worker X
+  cockpit fork X     Fresh context, keeps history
+  cockpit forget X --force
+                     Kill one worker + record
+  cockpit-nuke       STOP EVERYTHING
+  cockpit-nuke -k    Same, keep this terminal
+  cockpit-nuke -n    Preview, destroy nothing
+
   ── Media ────────────────────────────
   Volume Keys        Volume ±5% / Mute
   Brightness Keys    Brightness ±5%
