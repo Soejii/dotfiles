@@ -25,22 +25,19 @@ local browser     = "firefox"
 -------------------
 -- exec-once equivalents: run once on Hyprland start (not on reload).
 hl.on("hyprland.start", function()
-    hl.exec_cmd("/home/suji/.local/bin/start-hyprpaper")
+    hl.exec_cmd("hyprpaper")
     hl.exec_cmd(browser)
     hl.exec_cmd("waybar -c ~/.config/waybar/config -s ~/.config/waybar/style.css")
-    hl.exec_cmd("/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1")
-    hl.exec_cmd("gnome-keyring-daemon --start --components=secrets,ssh")
+    hl.exec_cmd("systemctl --user start hyprpolkitagent.service")
     hl.exec_cmd(terminal)
     hl.exec_cmd("nm-applet")
-    -- via systemd: journal keeps its inhibit-lock log, restartable when stuck
-    hl.exec_cmd("systemctl --user start hypridle.service")
+    -- Run idle management and its gamepad adapter as supervised user services.
+    hl.exec_cmd("systemctl --user start hypridle.service gamepad-idle-inhibit.service")
     hl.exec_cmd("wl-paste --type text --watch cliphist store")
     hl.exec_cmd("wl-paste --type image --watch cliphist store")
     hl.exec_cmd("blueman-applet")
     hl.exec_cmd("dunst")
     hl.exec_cmd("/home/suji/.local/bin/hypr-compact-workspaces")
-    hl.exec_cmd("systemd-cat -t video-idle-inhibit /home/suji/.local/bin/video-idle-inhibit")
-    hl.exec_cmd("systemd-cat -t gamepad-idle-inhibit /home/suji/.local/bin/gamepad-idle-inhibit")
 end)
 
 -------------------------------
