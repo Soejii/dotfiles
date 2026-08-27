@@ -1,7 +1,7 @@
 [Unit]
+StartLimitIntervalSec=1h
+StartLimitBurst=4
 Description=AppSheet presensi attendance automation (Playwright, image upload)
-After=network-online.target
-Wants=network-online.target
 
 [Service]
 Type=oneshot
