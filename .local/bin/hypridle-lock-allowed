@@ -3,11 +3,9 @@
 #   exit 0  = let the hard lock fire
 #   exit 1  = defer, something legitimate wants the screen awake
 #
-# The hard lock exists because an app can block the normal 5-min lock through
-# either inhibit channel, and the Wayland one is invisible to hypridle's counter
-# (the 2026-08-23 Vesktop incident). But a blanket ignore_inhibit also locks
-# during things that genuinely need the screen: a Discord call or screen share,
-# controller-only play, an OBS stream. This tells those apart.
+# The normal 5-minute lock honors D-Bus inhibitors from applications. The
+# 45-minute safety lock ignores those inhibitors, then uses this narrow gate to
+# avoid interrupting a real call, controller-only play, or an OBS session.
 #
 # It deliberately does NOT use playerctl/MPRIS. That proxy caused the 2026-08-22
 # false positive, and here a wrong "Playing" would silently defer the lock
@@ -18,9 +16,12 @@
 # so a deferral costs at most a minute of extra awake time once the reason ends.
 
 set -u
+
+log() { /usr/bin/logger -t hypridle-lock-allowed "$*"; }
+
 U="$(/usr/bin/id -u)"
 
-defer() { /usr/bin/logger -t hypridle-lock-allowed "hard lock deferred: $1"; exit 1; }
+defer() { log "hard lock deferred: $1"; exit 1; }
 
 # 1. A real voice call or screen share: the client is capturing the microphone.
 #    A leaked idle inhibitor does NOT capture anything, which is what separates
@@ -30,7 +31,7 @@ if so="$(/usr/bin/timeout 5 /usr/bin/pactl list source-outputs 2>/dev/null)"; th
         defer "a client is capturing the microphone (call or screen share)"
     fi
 else
-    /usr/bin/logger -t hypridle-lock-allowed "pactl failed; failing closed and locking"
+    log "pactl failed; failing closed and locking"
     exit 0
 fi
 
@@ -56,15 +57,6 @@ fi
 if /usr/bin/pgrep -x obs >/dev/null 2>&1 \
    || /usr/bin/pgrep -f com.obsproject.Studio >/dev/null 2>&1; then
     defer "OBS is running"
-fi
-
-# 4. A Steam game window is open.
-if cj="$(/usr/bin/timeout 5 /usr/bin/hyprctl clients -j 2>/dev/null)"; then
-    if printf '%s' "$cj" | /usr/bin/jq -e 'any(.[]; ((.class? // "") | tostring | startswith("steam_app")))' >/dev/null 2>&1; then
-        defer "a Steam game window is open"
-    fi
-else
-    /usr/bin/logger -t hypridle-lock-allowed "hyprctl failed; failing closed and locking"
 fi
 
 exit 0

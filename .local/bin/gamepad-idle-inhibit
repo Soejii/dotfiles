@@ -14,13 +14,18 @@ virtual pad and the real event* goes silent. The grab is evdev-only; joydev
 (js*) still delivers the button/axis events, so reading js* works whether or
 not Steam has grabbed the pad.
 
-Holds an org.freedesktop.ScreenSaver inhibit (same mechanism as
-video-idle-inhibit, which hypridle honors) while a gamepad has produced input
-within the last GRACE seconds; releases after, so setting the pad down / walking
-away still lets the screen lock and suspend.
+Holds an org.freedesktop.ScreenSaver inhibit, which hypridle honors, while a
+gamepad has produced input within the last GRACE seconds; releases after, so
+setting the pad down or walking away still lets the screen lock and suspend.
 
 If this process dies the dbus connection closes and the inhibit auto-releases,
 so it can never leave the screen stuck awake.
+
+Hypridle restarts silently wipe every D-Bus inhibit; a cookie from the old
+instance is dead on the new one. The loop watches the ScreenSaver name owner
+and re-takes the inhibit when it changes.
+While inhibited it also refreshes STATE_FILE so the 45-minute safety-lock gate
+can distinguish active controller play from an abandoned session.
 """
 import glob
 import os
@@ -30,7 +35,7 @@ import time
 
 import gi
 gi.require_version("Gio", "2.0")
-from gi.repository import Gio
+from gi.repository import Gio, GLib
 
 JS_SIZE = struct.calcsize("=IhBB")  # js_event: u32 time, s16 value, u8 type, u8 number
 JS_BUTTON = 0x01
@@ -40,13 +45,51 @@ GRACE = 120             # keep awake this long after the last gamepad input
 SCAN = 5                # rescan for plugged/unplugged pads this often
 AXIS_DEADZONE = 3000    # ignore analog jitter/drift; hats jump ±32767 so still counted
 EXCLUDE_VENDORS = {"26ce"}  # ASRock LED phantom joystick (js0)
+STATE_FILE = f"/run/user/{os.getuid()}/gamepad-idle-inhibit.active"
 
+# Direct bus calls, no DBusProxy: without a GLib main loop a proxy never
+# notices a name-owner change and keeps routing calls to the dead unique
+# name of a restarted hypridle (ServiceUnknown). The bus itself always
+# routes a well-known-name call to the current owner.
 _bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-_ss = Gio.DBusProxy.new_sync(
-    _bus, Gio.DBusProxyFlags.NONE, None,
-    "org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver",
-    "org.freedesktop.ScreenSaver", None,
-)
+
+
+def _ss_call(method, params, reply_type):
+    return _bus.call_sync(
+        "org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver",
+        "org.freedesktop.ScreenSaver", method, params,
+        reply_type, Gio.DBusCallFlags.NONE, 1000, None,
+    )
+
+
+def _inhibit():
+    result = _ss_call(
+        "Inhibit",
+        GLib.Variant("(ss)", ("gamepad-idle-inhibit", "gamepad in use")),
+        GLib.VariantType("(u)"),
+    )
+    return result.unpack()[0]
+
+
+def _uninhibit(cookie):
+    _ss_call("UnInhibit", GLib.Variant("(u)", (cookie,)), None)
+
+
+def _ss_owner():
+    """Current unique-name owner of org.freedesktop.ScreenSaver, or None.
+
+    Asks the bus directly: the proxy's cached g-name-owner only updates when
+    a GLib main loop iterates, and this script deliberately has none.
+    """
+    try:
+        return _bus.call_sync(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus",
+            "org.freedesktop.DBus", "GetNameOwner",
+            GLib.Variant("(s)", ("org.freedesktop.ScreenSaver",)),
+            None, Gio.DBusCallFlags.NONE, 500, None,
+        )[0]
+    except Exception:
+        return None  # name unowned right now (hypridle down or restarting)
 
 
 def _read(p):
@@ -74,6 +117,7 @@ def main():
     last_axis = {}         # (fd, number) -> value
     last_active = 0.0
     cookie = None
+    inhibit_owner = None   # ScreenSaver unique name the cookie was taken from
     last_scan = 0.0
     poll = select.poll()
 
@@ -107,7 +151,16 @@ def main():
                 resync()
                 last_scan = now
 
-            for fd, _ev in poll.poll(1000):
+            # poll() returns immediately when no file descriptors are
+            # registered. Without this sleep, an unplugged controller makes the
+            # daemon spin continuously and consume roughly 2% CPU.
+            if open_fds:
+                events = poll.poll(1000)
+            else:
+                time.sleep(1)
+                events = []
+
+            for fd, _ev in events:
                 try:
                     data = os.read(fd, JS_SIZE * 128)
                 except OSError:
@@ -126,26 +179,55 @@ def main():
 
             now = time.time()
             active = (now - last_active) <= GRACE and bool(open_fds)
-            if active and cookie is None:
-                result = _ss.Inhibit("(ss)", "gamepad-idle-inhibit", "gamepad in use")
-                cookie = result[0] if isinstance(result, tuple) else result
+
+            # A dead/restarted hypridle means the cookie no longer exists on
+            # the current owner; drop it WITHOUT UnInhibit (that corrupts the
+            # new instance's lock counter) so the normal path re-inhibits.
+            owner = _ss_owner()
+            if cookie is not None and owner != inhibit_owner:
+                cookie = None
+                print("ScreenSaver owner changed (hypridle restart?) -> "
+                      "stale cookie dropped", flush=True)
+
+            if active and cookie is None and owner is not None:
+                cookie = _inhibit()
+                inhibit_owner = owner
                 print("gamepad active -> idle inhibited", flush=True)
             elif not active and cookie is not None:
                 try:
-                    _ss.UnInhibit("(u)", cookie)
+                    _uninhibit(cookie)
                 except Exception:
                     pass
                 cookie = None
                 print("gamepad idle -> inhibit released", flush=True)
+
+            # Freshness marker for the safety-lock gate: mtime within ~3 min
+            # means "gamepad genuinely in use, defer the lock".
+            if cookie is not None:
+                try:
+                    os.close(os.open(STATE_FILE, os.O_CREAT | os.O_WRONLY, 0o600))
+                    os.utime(STATE_FILE)
+                except OSError:
+                    pass
+            else:
+                try:
+                    os.unlink(STATE_FILE)
+                except OSError:
+                    pass
         except Exception as e:
             # Never let an exception kill the loop while holding an inhibit
             # (that was the original video-idle-inhibit stuck-awake bug).
             if cookie is not None:
                 try:
-                    _ss.UnInhibit("(u)", cookie)
+                    if _ss_owner() == inhibit_owner:
+                        _uninhibit(cookie)
                 except Exception:
                     pass
                 cookie = None
+            try:
+                os.unlink(STATE_FILE)
+            except OSError:
+                pass
             print(f"loop error (recovered): {e}", flush=True)
             time.sleep(1)
 

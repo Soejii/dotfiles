@@ -1,0 +1,13 @@
+[Unit]
+Description=Treat gamepad input as desktop activity
+Requires=hypridle.service
+After=hypridle.service
+PartOf=hypridle.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/home/suji/.local/bin/gamepad-idle-inhibit
+Restart=on-failure
+RestartSec=5

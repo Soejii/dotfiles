@@ -1,6 +1,0 @@
-[Unit]
-Description=Battery low warning check
-
-[Service]
-Type=oneshot
-ExecStart=/home/suji/.local/bin/battery-warn

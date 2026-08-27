@@ -1,5 +1,0 @@
-#!/bin/bash
-# Suspend only when running on battery. Used by hypridle so plugged-in idle never suspends.
-if [ "$(cat /sys/class/power_supply/ADP0/online 2>/dev/null)" = "0" ]; then
-    systemctl suspend
-fi
