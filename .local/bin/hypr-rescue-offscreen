@@ -1,0 +1,187 @@
+#!/usr/bin/python3
+"""Pull Hyprland windows stranded outside every monitor back onto the screen.
+
+Why this exists: the monitors here drop their DRM link on DPMS-off rather than
+just blanking, so Hyprland briefly has zero outputs. Tiled windows get re-laid
+out when the outputs return, but floating windows keep their absolute
+coordinates and can come back parked outside all monitor bounds. They are still
+mapped and still listed by `hyprctl clients`, just at somewhere like x=-1821,
+where no workspace can show them. The Android emulator hits this every time.
+
+Windows are moved as a group per monitor, by one shared translation, so a
+multi-window app (the emulator's phone window plus its toolbar) keeps its
+relative arrangement instead of being stacked on top of itself.
+
+Hyprland 0.56 dispatchers are Lua; the old `dispatch movewindowpixel` string
+form is a parse error. `hl.dsp.window.move` only acts on the focused window, so
+each rescue is focus-then-move, with the original focus restored at the end.
+"""
+
+import argparse
+import json
+import subprocess
+import sys
+
+# Rotated outputs report their mode unrotated, so logical w/h swap for these.
+ROTATED_TRANSFORMS = {1, 3, 5, 7}
+
+
+def hyprctl_json(*args):
+    proc = subprocess.run(
+        ["hyprctl", *args, "-j"], capture_output=True, text=True, check=True
+    )
+    return json.loads(proc.stdout)
+
+
+def dispatch(lua):
+    """Run a Lua dispatcher. hyprctl reports failures as 'error:' on stdout."""
+    proc = subprocess.run(
+        ["hyprctl", "dispatch", lua], capture_output=True, text=True
+    )
+    out = (proc.stdout + proc.stderr).strip()
+    return proc.returncode == 0 and not out.lower().startswith("error"), out
+
+
+def monitor_rects(monitors):
+    rects = {}
+    for mon in monitors:
+        if mon.get("disabled"):
+            continue
+        scale = mon.get("scale") or 1.0
+        width, height = mon["width"] / scale, mon["height"] / scale
+        if mon.get("transform", 0) in ROTATED_TRANSFORMS:
+            width, height = height, width
+        rects[mon["id"]] = (mon["x"], mon["y"], width, height)
+    return rects
+
+
+def overlap_area(a, b):
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    ix = max(0.0, min(ax + aw, bx + bw) - max(ax, bx))
+    iy = max(0.0, min(ay + ah, by + bh) - max(ay, by))
+    return ix * iy
+
+
+def clamp_into(pos, span, lo, extent, margin):
+    """Offset needed to sit `span` inside [lo, lo+extent) with a margin."""
+    if span + 2 * margin >= extent:
+        return lo + margin - pos
+    return min(max(pos, lo + margin), lo + extent - span - margin) - pos
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description="Move Hyprland windows that are stranded off-screen back into view."
+    )
+    ap.add_argument(
+        "--min-visible",
+        type=float,
+        default=0.05,
+        help="rescue a window when less than this fraction of it is on a "
+        "monitor (default 0.05; use 0 for fully off-screen only)",
+    )
+    ap.add_argument("--margin", type=int, default=40, help="gap from the monitor edge (default 40)")
+    ap.add_argument("-n", "--dry-run", action="store_true", help="report what would move, change nothing")
+    ap.add_argument("-q", "--quiet", action="store_true", help="only report on error")
+    args = ap.parse_args()
+
+    try:
+        clients = hyprctl_json("clients")
+        monitors = hyprctl_json("monitors")
+    except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError) as exc:
+        print(f"cannot talk to Hyprland: {exc}", file=sys.stderr)
+        return 2
+
+    rects = monitor_rects(monitors)
+    if not rects:
+        print("no enabled monitors; nothing to rescue onto", file=sys.stderr)
+        return 2
+
+    focused = next((m["id"] for m in monitors if m.get("focused")), next(iter(rects)))
+
+    stranded = {}
+    for client in clients:
+        if not client.get("mapped"):
+            continue
+        at, size = client.get("at"), client.get("size")
+        if not at or not size or size[0] <= 0 or size[1] <= 0:
+            continue
+        rect = (at[0], at[1], size[0], size[1])
+        area = size[0] * size[1]
+        visible = sum(overlap_area(rect, mon) for mon in rects.values())
+        if visible / area > args.min_visible:
+            continue
+        target = client["monitor"] if client.get("monitor") in rects else focused
+        stranded.setdefault(target, []).append(client)
+
+    if not stranded:
+        if not args.quiet:
+            print("no stranded windows")
+        return 0
+
+    # One shared translation per monitor keeps multi-window apps arranged.
+    moves = []
+    for mon_id, group in stranded.items():
+        mx, my, mw, mh = rects[mon_id]
+        left = min(c["at"][0] for c in group)
+        top = min(c["at"][1] for c in group)
+        right = max(c["at"][0] + c["size"][0] for c in group)
+        bottom = max(c["at"][1] + c["size"][1] for c in group)
+        dx = clamp_into(left, right - left, mx, mw, args.margin)
+        dy = clamp_into(top, bottom - top, my, mh, args.margin)
+        for client in group:
+            moves.append(
+                (client, round(client["at"][0] + dx), round(client["at"][1] + dy))
+            )
+
+    if args.dry_run:
+        for client, x, y in moves:
+            print(f"{client['class']!r} {client['title'][:40]!r} {client['at']} -> [{x}, {y}]")
+        return 0
+
+    restore = None
+    try:
+        active = hyprctl_json("activewindow")
+        restore = active.get("address") or None
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        pass
+
+    moved, failed = 0, 0
+    for client, x, y in moves:
+        addr = client["address"]
+        ok, msg = dispatch(f"hl.dsp.focus({{ window = 'address:{addr}' }})")
+        if not ok:
+            print(f"could not focus {client['class']}: {msg}", file=sys.stderr)
+            failed += 1
+            continue
+        # move acts on whatever is focused, so refuse to move the wrong window.
+        try:
+            landed = hyprctl_json("activewindow").get("address")
+        except (subprocess.CalledProcessError, json.JSONDecodeError):
+            landed = None
+        if landed != addr:
+            print(f"focus did not land on {client['class']}; skipping", file=sys.stderr)
+            failed += 1
+            continue
+        ok, msg = dispatch(f"hl.dsp.window.move({{ x = {x}, y = {y} }})")
+        if ok:
+            moved += 1
+            if not args.quiet:
+                print(f"rescued {client['class']!r} {client['at']} -> [{x}, {y}]")
+        else:
+            print(f"could not move {client['class']}: {msg}", file=sys.stderr)
+            failed += 1
+
+    if restore:
+        dispatch(f"hl.dsp.focus({{ window = 'address:{restore}' }})")
+
+    if failed:
+        return 1
+    if args.quiet and moved:
+        print(f"rescued {moved} window(s)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

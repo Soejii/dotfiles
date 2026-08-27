@@ -46,6 +46,7 @@ end)
 hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
 hl.env("GTK_THEME", "Catppuccin-Blue-Dark")
+hl.env("OBS_VKCAPTURE", "1") -- obs-vkcapture layer: dormant unless an OBS Game Capture source is active
 
 -----------------------
 ---- LOOK AND FEEL ----
@@ -111,11 +112,23 @@ hl.config({
         -- 0 = ignore: keep the fullscreen window fullscreen, new window stays behind.
         on_focus_under_fullscreen = 0,
 
+        -- FreeSync. DP-1 (MSI MAG 275QF) is a VRR panel; fixed 180Hz judders on
+        -- games sitting below refresh (MHW at ~78fps). 2 = fullscreen only:
+        -- the desktop's idle->scroll->idle swing is what makes panels flicker,
+        -- so keep it out of there. Revert to 0 if dark scenes visibly pulse.
+        vrr = 2,
+
         -- Safety net for the 10-min DPMS-off listener in hypridle.conf. Without
         -- this, waking the screen rests entirely on hypridle's on-resume, so a
         -- wedged hypridle leaves a black screen that looks like a dead machine.
         -- With it, Hyprland itself wakes the display on any keypress.
         key_press_enables_dpms    = true,
+    },
+
+    ecosystem = {
+        -- Suppress the "Hyprland updated to X!" splash that hyprland-qtutils
+        -- throws up on the first session after every version bump.
+        no_update_news = true,
     },
 
     input = {
@@ -142,6 +155,19 @@ hl.config({
         -- win-cycle script, mainMod+arrow focus binds) warps the mouse
         -- cursor to the center of the newly focused window.
         no_warps = true,
+    },
+
+    debug = {
+        -- Hyprland's own log lines are OFF by default (disable_logs = true), so
+        -- /run/user/1000/hypr/*/hyprland.log carries ONLY aquamarine's DRM
+        -- messages. That is why the 2026-08-25 OBS investigation could prove the
+        -- monitors fully disconnect on DPMS-off (aquamarine logs that) but could
+        -- NOT see what the compositor did next: fallback output, window moves,
+        -- focus. A wrong conclusion was drawn from that silence. Turned on so a
+        -- recurrence is diagnosable instead of guessable.
+        -- Cost: this log lives on tmpfs (RAM) and grows faster. Set back to true
+        -- if that ever matters.
+        disable_logs = false,
     },
 })
 
@@ -229,6 +255,12 @@ hl.bind("ALT + SHIFT + Tab", hl.dsp.exec_cmd("/home/suji/.local/bin/win-cycle pr
 
 -- Mod+O: workspace overview (wofi picker)
 hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("/home/suji/.local/bin/ws-overview"))
+
+-- Mod+Shift+R: rescue windows stranded outside every monitor. The displays drop
+-- their DRM link on DPMS-off instead of blanking, so Hyprland momentarily has no
+-- outputs; tiled windows get re-laid out on return but floating ones keep stale
+-- absolute coords and land off-screen (the Android emulator does this every lock).
+hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("/home/suji/.local/bin/hypr-rescue-offscreen"))
 
 -- Scratchpad (special workspace "magic")
 hl.bind(mainMod .. " + S",             hl.dsp.workspace.toggle_special("magic"))
