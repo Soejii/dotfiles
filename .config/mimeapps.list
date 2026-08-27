@@ -5,6 +5,7 @@ application/vnd.openxmlformats-officedocument.presentationml.presentation=libreo
 application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=libreoffice-4.desktop;libreoffice-3.desktop;
 application/vnd.openxmlformats-officedocument.wordprocessingml.document=libreoffice.desktop;
 application/zip=libreoffice-8.desktop;
+application/x-bittorrent=com.github.persepolisdm.persepolis.desktop;
 
 [Default Applications]
 application/pdf=org.gnome.Evince.desktop
@@ -53,3 +54,9 @@ text/x-go=code.desktop
 text/x-rust=code.desktop
 x-scheme-handler/accela=accela.desktop
 x-scheme-handler/antigravity=antigravity.desktop
+application/x-bittorrent=com.github.persepolisdm.persepolis.desktop
+text/html=firefox.desktop
+x-scheme-handler/http=firefox.desktop
+x-scheme-handler/https=firefox.desktop
+x-scheme-handler/about=firefox.desktop
+x-scheme-handler/unknown=firefox.desktop
