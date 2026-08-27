@@ -1,48 +1,48 @@
 ---
 name: peer-review
-description: External peer review of a code diff before committing. Pipes the diff to the codex CLI, which maps the change's blast radius, edge cases, and correctness, then reports findings. Use before every `git commit`, and when asked to peer-review, code-review, or sanity-check changes.
+description: Peer review of a code diff by an external model before committing. Use before every `git commit`, and whenever Suji asks to review or sanity-check a change.
 ---
 
 # Peer review before commit
 
-The reviewer is a reader. Its entire output is a findings list, and the code is
-exactly as it was when it went in.
+The reviewer is a **reader**. Its entire output is a findings list, and the code
+is exactly as it was when it went in.
 
-**The default reviewer is the codex CLI, not an opencode worker** (changed
-2026-07-30). Codex did a 92KB review in a few minutes that three opencode `sol`
-workers failed to produce at all, and it found a real defect the orchestrator had
-personally got wrong.
+The default reviewer is the **codex CLI**, because it **fails loudly**: a
+one-shot foreground command with no pane to babysit and no session to monitor,
+which exits non-zero when the provider is out of capacity instead of retrying in
+silence. Section 3b covers the opencode fallback.
 
-The reason to prefer it is **not** that it has a healthier route to the provider -
-it hits the same capacity limits, as section 1 shows. It is that codex is a
-one-shot foreground command that **fails loudly**: no pane to babysit, no session
-to monitor, and when the provider is out of capacity it says so and exits non-zero
-instead of retrying in silence until you give up. The opencode path is kept in
-section 3b as a fallback.
+Rules below carrying a date or a ticket id have an incident behind them in
+[`INCIDENTS.md`](INCIDENTS.md). Read it before relaxing one, or when a run fails
+in the way a rule was meant to prevent.
 
 ## 1. Pick the model
 
 Ask in plain text, not the multiple-choice tool. One line, then wait:
 
-> Reviewing with codex on `gpt-5.6-luna`, unless you'd rather name another model
-> or effort.
+> Reviewing with codex on `gpt-5.6-sol` at `medium`, unless you'd rather name
+> another model or effort.
 
 Whatever Suji types wins verbatim. "go", or a model pre-authorised for the
-session, skips the question. If he names an opencode model instead, use section 3b.
+session, skips the question.
 
-**Pass `-m` explicitly; do not rely on the codex default.** `~/.codex/config.toml`
-pins `model = "gpt-5.6-sol"`, and on 2026-07-30 `sol` was at capacity and failed
-every request. Verified that day: `gpt-5.6-luna` and `gpt-5.6-terra` both work,
-`gpt-5.6-sol` returns `ERROR: Selected model is at capacity. Please try a
-different model.` and exits 1, and `gpt-5.6-codex` is not a valid model id.
-Reasoning effort comes from `model_reasoning_effort` in that config (currently
-`medium`); override per-run with `-c model_reasoning_effort=high`.
+**The default is `gpt-5.6-sol` at `medium`**, set by Suji on 2026-08-03.
+`~/.codex/config.toml` already pins both, but pass `-m` explicitly anyway so each
+run states its own model instead of inheriting a config that may drift. Override
+effort per-run with `-c model_reasoning_effort=high`.
 
-Codex at least **fails loudly** here, which is the whole reason it is the default:
-it prints that capacity error and exits non-zero in seconds, where opencode
-swallows the identical condition and retries in silence for as long as you let it.
-If a review dies instantly, read the run log for that error and switch model,
-rather than assuming the diff or the brief was at fault.
+**If the run dies within seconds, read the log before blaming the diff or the
+brief.** Two unrelated failures look identical from the outside:
+
+- `Selected model is at capacity` — switch to `gpt-5.6-luna` or `gpt-5.6-terra`,
+  both verified working on 2026-07-30. `gpt-5.6-codex` is not a valid model id.
+- `401 Unauthorized` on the websocket, or `refresh token was revoked` — codex
+  auth is dead for **every** model, so switching model wastes time. Suji has to
+  run `codex login` himself; it is interactive and cannot be done from here.
+
+If he names an opencode model instead, read
+[`OPENCODE-FALLBACK.md`](OPENCODE-FALLBACK.md) and dispatch from there.
 
 ## 2. Build the diff
 
@@ -54,16 +54,25 @@ git diff HEAD -- <paths>          # or: git diff --staged
 ```
 
 Write it to a temp `.md` in the scratchpad; a diff in the prompt positional hits
-ARG_MAX. Include what the reviewer needs to see the blast radius: callers of the
-changed code, the interfaces it implements, the tests covering those paths. Keep
-the absolute path to hand, because section 3 delivers it differently depending on
-how you dispatch.
+ARG_MAX.
+
+Then extend it until the reviewer can see the **blast radius** without going to
+look for it. Done when all three hold:
+
+- Every caller of a changed signature is either included in full, or named with a
+  one-line note saying why it is unaffected.
+- Every interface the changed code implements or overrides is included.
+- The tests covering the changed paths are included, along with a note where a
+  changed path has none.
+
+An absent item stated is fine; an absent item unstated is what sends a reviewer
+hunting.
 
 ## 3a. Dispatch to codex (default)
 
 `codex exec` appends piped stdin as a `<stdin>` block, so **pipe the diff rather
-than giving it a path.** The content then arrives inline and the "do not explore"
-fence enforces itself, because there is nothing left to go looking for:
+than giving it a path.** The content then arrives inline and the fence enforces
+itself, because there is nothing left to go looking for:
 
 ```bash
 S=/path/to/scratchpad
@@ -76,87 +85,59 @@ cat "$S/review.md" | /home/suji/.local/bin/codex exec "$(cat "$S/brief.txt")" \
 echo "exit=$?"                    # non-zero usually means a capacity error
 ```
 
-Verified working end to end on 2026-07-30: the diff arrives inside a `<stdin>`
-block, codex answers questions about its contents, and the findings land in `-o`.
 Add `--skip-git-repo-check` only when `-C` is not inside a git repo.
 
 - `-s read-only` is sufficient for a review and blocks edits outright, which is
   the guarantee section 5 depends on.
-- `-o` writes just the final message. Read that file, not the run log, which
-  carries the whole transcript.
-- Redirect the run log to disk. Letting a full codex transcript into the
-  orchestrator's context is the same mistake as asking a worker to echo files back.
-- `-C` matters: it sets the root codex may read under.
+- `-o` writes just the final message. Read that file, and leave
+  `codex-run.log` on disk unread; it carries the whole transcript.
+- `-C` sets the root codex may read under.
 
-**Codex does not read `CLAUDE.md`.** The brief must carry the house rules itself
-or it will flag correct house style as defects; see section 4.
+Completion criterion: `exit=0` and the `-o` file contains findings. Anything else
+is a dispatch failure, not a clean review.
 
 There is also a native `codex exec review --uncommitted` (and `--base <branch>`)
-which reads the working tree itself instead of a curated diff. Untried here. The
-curated-diff path above is the proven one, so prefer it for a real pre-commit
-review and treat the native form as a quick sanity check at most.
+which reads the working tree itself instead of a curated diff. Untried here, so
+prefer the curated-diff path above for a real pre-commit review and treat the
+native form as a quick sanity check at most.
 
-## 3b. Fallback: dispatch to an opencode worker
+## 3b. Fallback: an opencode worker
 
-Use when Suji names an opencode model, or when codex is unavailable.
-
-**`cockpit spawn` does not take `-f`.** Its signature is
-`cockpit spawn <name> "<kickoff>" [model] [dir]`, so a trailing `-f <file>` is
-swallowed as a stray positional and the reviewer starts with no diff at all. It
-will not say so. Put the absolute path *inside* the brief and open by telling it
-to read that file:
-
-```bash
-COCKPIT_VARIANT=medium cockpit spawn rev1 "Read this file and review what is in it:
-/abs/path/to/diff.md
-
-<rest of brief>" openai/gpt-5.6-luna
-```
-
-Only the headless form takes `-f`, message positional first and `-f` last:
-
-```bash
-opencode run "DELEGATED-WORKER: <brief>" -m openai/gpt-5.6-luna \
-  --variant medium --dangerously-skip-permissions \
-  </dev/null -f <diff.md> 2>&1 | tail -80
-```
-
-Then arm a Monitor per CLAUDE.md, but set the ceiling at about **250k**, not the
-500k used for implementation workers. A focused review of one diff lands well
-under that. Past it the worker is exploring rather than reviewing, and the fix is
-to kill and re-spawn, not to wait it out.
-
-**Prefer `luna` over `sol` on this path.** On 2026-07-30 three `sol` reviewers sat
-in a silent provider-overload retry loop, one killed at 25 minutes having produced
-nothing, while `luna` completed the identical review. If a reviewer goes silent
-with frozen context, run `cockpit errors` before concluding anything: opencode logs
-provider errors only to its own log, so a retry loop and deep thinking look
-identical in the pane.
+Read [`OPENCODE-FALLBACK.md`](OPENCODE-FALLBACK.md).
 
 ## 4. The brief
 
-Self-contained; the reviewer has none of your context. Say what the change is
-meant to do, since a reviewer guessing at intent reviews the wrong thing.
+Self-contained; the reviewer has none of your context.
 
-Then fence it, near the top where it cannot be missed. A reviewer that cannot
-immediately see the change goes looking for it, and looking means `git branch`
-hunting, `gh api` calls, and reading backend source whose behaviour you already
-handed it:
+**Codex does not read `CLAUDE.md`.** On a Flutter repo, concatenate
+[`HOUSE-RULES-FLUTTER.md`](HOUSE-RULES-FLUTTER.md) into the brief, or codex will
+report correct house style as defects.
+
+The brief is done when it carries all four of:
+
+1. What the change is meant to do. A reviewer guessing at intent reviews the
+   wrong thing.
+2. Any API or contract facts you verified yourself, marked authoritative, so it
+   does not go re-deriving them from the backend.
+3. The fence, near the top where it cannot be missed.
+4. The review request below, unedited.
+
+### The fence
+
+A reviewer that cannot immediately see the change goes looking for it, and
+looking means `git branch` hunting, `gh api` calls, and reading backend source
+whose behaviour you already handed it (SID-248):
 
 > Do NOT run git, gh, or any repository exploration commands. Do NOT hunt for
 > branches. Do NOT read backend or other-language source. Everything you need is
 > in the file above. You may read files under `<repo>/lib` and `<repo>/test` if
 > you need to see a caller in full, and only then.
 
-List any API or contract facts you verified yourself as authoritative, so it does
-not go re-deriving them from the backend.
+Keep the fence on the codex path too. Piping the diff removes most of the
+incentive to wander and `-s read-only` caps the damage, but a reviewer that goes
+exploring still burns minutes and returns findings about code you never changed.
 
-**On the codex path, add the house rules**, because codex never sees `CLAUDE.md`
-and without them it reports correct house style as defects. For the Flutter repos
-that means at least: the pinned SDK version, `withValues` not `withOpacity`,
-`DropdownButtonFormField` takes `value:`, screenutil `.w/.h/.sp/.r`, Indonesian UI
-copy is intentional, no `_buildXxx()` helpers, fetch in `onReady` not `onInit`.
-Add whatever else the diff touches. Then:
+### The review request
 
 > Review this diff as an external engineer who wasn't involved in writing it.
 > Your entire output is a findings list.
@@ -179,30 +160,19 @@ Add whatever else the diff touches. Then:
 > triggers it. Most severe first. Label opinions as opinions. If the diff is
 > clean, say so in one line.
 
-Ask for findings only. A worker asked to echo files back is what took one session
-from 222k to 989k context.
+Ask for findings only, never for files or diffs echoed back.
 
-Both halves of this are load-bearing, and SID-248 proved it on the opencode path.
-sol at `medium`, dispatched with a trailing `-f` that cockpit swallowed and no
-fence in the brief, spent 15 minutes and 412k context on `git branch` hunting and
-Laravel helper source without producing one finding. Re-spawned with the path
-inside the brief and the fence in place, the same model at the same effort read the
-file and was working in under a minute. When a reviewer wanders, suspect your
-dispatch before you blame the model.
+## 5. Triage the findings, then hand them to Suji
 
-Keep the fence on the codex path too. Piping the diff removes most of the
-incentive to wander, and `-s read-only` caps the damage, but a reviewer that goes
-exploring still burns minutes and returns findings about code you never changed.
+**Triage before he sees the list, fix nothing.** The reviewer is a second opinion
+and will produce false positives; acting on a wrong one is worse than ignoring
+it.
 
-## 5. Bring the findings to Suji before changing any code
+Verify every finding against the actual code, then give him one line each: what
+it claims, your verdict, and the evidence behind that verdict. Verdicts are real
+defect, false positive, or out of scope.
 
-Verify each finding against the actual code first. The reviewer is a second
-opinion and will produce false positives; acting on a wrong one is worse than
-ignoring it.
-
-Then show him the list and wait. One line per finding: what it claims, your
-verdict, and the evidence behind that verdict. Real defect, false positive, or
-out of scope. He decides what gets fixed.
+Then wait. He decides what gets fixed.
 
 Handing him a list of things already fixed defeats the point. He is reading these
 to know what was wrong with the code, which is the part that keeps his judgement
@@ -214,8 +184,8 @@ Confirmed defects go back to the worker that wrote the code, unless the fix is
 security-sensitive, needs root-cause debugging, or is one character. Re-review
 after non-trivial fixes.
 
-Then read the cleaned diff and reason about the logic yourself. On SID-246, green
-gates plus a clean review still shipped a filter race and a wiped draft.
+Then read the cleaned diff and reason about the logic yourself. A clean review is
+not a sign-off (SID-246).
 
 ## 7. Report, then commit
 
