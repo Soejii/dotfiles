@@ -120,7 +120,41 @@ run the review first rather than asking whether you should.
 
 ## PDF Handling
 
-- For PDFs over 20 pages, split into parallel pdf-reader agents (20 pages each). Collect all extracted content, then write the final note yourself (or delegate the writing per the gate). For PDFs under 20 pages, use a single pdf-reader agent, then write the note.
+**Always run `pdf-inspector` first. Never open a local PDF with the Read tool or a
+pdf-reader agent before checking whether it has a real text layer.** The vision path
+pushes every page through a model's context; `pdf-inspector` is a local native binary
+that costs zero tokens. Installed 2026-08-02 at `/home/suji/.npm-global/bin/pdf-inspector`
+(npm `@firecrawl/pdf-inspector`, prebuilt Rust/napi binary, no toolchain needed).
+
+Note the CLI differs from the GitHub README, which documents an abandoned `cargo`
+path: the crates.io crate is stuck at 0.1.0 while npm ships 1.11.2. There is no
+`pdf2md` or `detect-pdf` command. It is:
+
+```bash
+pdf-inspector detect <file> --json     # classify: pdfType, pageCount, pagesNeedingOcr
+pdf-inspector <file> -o out.md         # extract to markdown
+pdf-inspector <file> --pages 1,3,5     # extract specific pages
+```
+
+The routing rule:
+
+1. `pdf-inspector detect <file> --json`. Measured ~30ms on 36 pages, ~57ms on 102.
+2. `pdfType: "TextBased"` and empty `pagesNeedingOcr` → extract to markdown with `-o`,
+   keep the `.md` next to the PDF, then Grep/Read only the sections needed. Do NOT
+   read the whole markdown into context by reflex; a 36-page document is ~10k tokens.
+   The markdown is a permanent cache, so re-reading the same document weeks later is
+   free and the whole library becomes greppable.
+3. Only for pages listed in `pagesNeedingOcr`, or `pdfType` scanned/image-based, fall
+   back to the old path: pdf-reader agents, 20 pages each, split for anything over 20.
+   Photocopied course packs and photographed handouts land here; publisher journal
+   PDFs generally do not.
+
+**Known weakness, verified not assumed: tables degrade.** On a real 36-page proposal
+the prose, headings, and in-text citations came out clean, but `Tabel 1.1` lost its
+header row to an `###` heading, flattened three rows into running paragraphs with the
+columns interleaved, and split the remainder into two pipe tables with mismatched
+column counts. So when a specific table's values matter, read those pages visually with
+`--pages` narrowing first; do not quote figures straight out of the extracted markdown.
 
 ## Flutter projects
 
