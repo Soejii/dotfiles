@@ -1,0 +1,13 @@
+[Unit]
+Description=arRPC - open Discord RPC server (game detection + rich presence for Vesktop)
+Documentation=https://github.com/OpenAsar/arrpc
+
+[Service]
+ExecStartPre=/usr/bin/python3 /home/suji/.local/bin/arrpc-merge-db
+ExecStartPre=/usr/bin/python3 /home/suji/.local/bin/arrpc-bind-localhost
+ExecStart=/usr/bin/node /home/suji/.npm-global/bin/arrpc
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

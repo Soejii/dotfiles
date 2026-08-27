@@ -1,0 +1,9 @@
+[
+  {
+    "id": "1158877933042143272",
+    "name": "Counter-Strike 2",
+    "executables": [
+      { "is_launcher": false, "name": "linuxsteamrt64/cs2", "os": "linux" }
+    ]
+  }
+]

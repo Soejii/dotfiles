@@ -1,0 +1,24 @@
+#!/usr/bin/python3
+"""Keep arRPC's unauthenticated activity bridge on localhost."""
+
+from pathlib import Path
+
+
+BRIDGE = Path("/home/suji/.npm-global/lib/node_modules/arrpc/src/bridge.js")
+UPSTREAM = "const wss = new WebSocketServer({ port });"
+LOCAL_ONLY = "const wss = new WebSocketServer({ port, host: '127.0.0.1' });"
+
+
+source = BRIDGE.read_text()
+
+if LOCAL_ONLY in source:
+    raise SystemExit(0)
+
+if UPSTREAM not in source:
+    raise SystemExit(
+        f"{BRIDGE} changed upstream; refusing to start arRPC without reviewing "
+        "its bridge bind address"
+    )
+
+BRIDGE.write_text(source.replace(UPSTREAM, LOCAL_ONLY, 1))
+print("Patched arRPC activity bridge to listen on 127.0.0.1 only")

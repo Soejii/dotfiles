@@ -1,0 +1,60 @@
+#!/usr/bin/python3
+"""Merge ~/.config/arrpc/extra-detectable.json into arRPC's game database.
+
+Discord's detectable-games DB (bundled with arRPC) lacks Linux executables
+for some native games (e.g. CS2). This script unions user-defined entries
+into the bundled DB. Idempotent; runs as ExecStartPre of arrpc.service so
+npm updates of arrpc get re-patched automatically on next service start.
+
+Config format: JSON array of detectable entries. An entry whose "id" already
+exists in the DB gets its "executables" unioned in; unknown ids are appended
+as new entries (use the game's real Discord application id so the client can
+resolve its name and icon).
+"""
+import json
+import os
+import sys
+
+DB = "/home/suji/.npm-global/lib/node_modules/arrpc/src/process/detectable.json"
+EXTRA = "/home/suji/.config/arrpc/extra-detectable.json"
+
+
+def main() -> int:
+    if not os.path.exists(EXTRA):
+        return 0
+    try:
+        with open(DB) as f:
+            db = json.load(f)
+        with open(EXTRA) as f:
+            extra = json.load(f)
+    except (OSError, ValueError) as e:
+        print(f"arrpc-merge-db: {e}", file=sys.stderr)
+        return 0  # never block arrpc startup
+
+    by_id = {entry.get("id"): entry for entry in db}
+    changed = False
+    for app in extra:
+        current = by_id.get(app.get("id"))
+        if current is not None:
+            have = {(x.get("name"), x.get("os"))
+                    for x in current.get("executables") or []}
+            for exe in app.get("executables", []):
+                if (exe.get("name"), exe.get("os")) not in have:
+                    current.setdefault("executables", []).append(exe)
+                    changed = True
+        else:
+            db.append(app)
+            by_id[app.get("id")] = app
+            changed = True
+
+    if changed:
+        tmp = DB + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(db, f)
+        os.replace(tmp, DB)
+        print("arrpc-merge-db: database patched")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
