@@ -12,6 +12,7 @@
   "modules-right": [
     "network",
     "custom/warp",
+    "custom/mudfish-ipv6",
     "custom/hypridle",
     "memory",
     "custom/volume",
@@ -87,6 +88,16 @@
     "tooltip": true,
     "on-click": "~/.config/waybar/scripts/warp-toggle.sh"
   },
+  "custom/mudfish-ipv6": {
+    "exec": "~/.config/waybar/scripts/mudfish-ipv6-status.sh",
+    "return-type": "json",
+    "interval": 5,
+    "signal": 11,
+    "format": "{}",
+    "tooltip": true,
+    "on-click": "~/.config/waybar/scripts/mudfish-ipv6-toggle.sh",
+    "on-click-right": "/home/suji/.local/bin/mudfish-net-recover"
+  },
   "custom/hypridle": {
     "exec": "~/.config/waybar/scripts/hypridle-status.sh",
     "return-type": "json",
@@ -94,7 +105,7 @@
     "signal": 10,
     "format": "{}",
     "tooltip": true,
-    "on-click": "systemctl --user restart hypridle.service && pkill -RTMIN+10 waybar"
+    "on-click": "systemctl --user start hypridle.service && pkill -RTMIN+10 waybar"
   },
   "custom/bluetooth": {
     "format": "󰂯",

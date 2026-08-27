@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+# Restore IPv4 connectivity after a Mudfish Full VPN teardown leaves routing broken.
+#
+# Failure this recovers from (observed 2026-08-06):
+#   Mudfish hits an MTU error, the tunnel stalls, and its privileged "Command
+#   controller" exits before restoring routing. The IPv4 default route is gone,
+#   every subsequent connect() returns ENETUNREACH, and NetworkManager never
+#   re-asserts the default because from its point of view the wired device was
+#   never deactivated. Previously this required a reboot.
+#
+# Usage:
+#   mudfish-net-recover            diagnose, and repair only if actually broken
+#   mudfish-net-recover --check    diagnose only, never touch anything
+#   mudfish-net-recover --force    repair even if the link looks healthy
+
+set -uo pipefail
+
+readonly mudfish_var="/opt/mudfish/6.5.3/var"
+readonly probe_ip="1.1.1.1"
+readonly probe_host="example.com"
+
+mode="auto"
+case "${1:-}" in
+  --check) mode="check" ;;
+  --force) mode="force" ;;
+  "")      mode="auto" ;;
+  *)       printf 'usage: %s [--check|--force]\n' "${0##*/}" >&2; exit 64 ;;
+esac
+
+note()  { printf '  %s\n' "$*"; }
+step()  { printf '\n== %s\n' "$*"; }
+warn()  { printf '  !! %s\n' "$*" >&2; }
+
+notify() {
+  command -v notify-send >/dev/null 2>&1 || return 0
+  notify-send "${1:-}" "${2:-}" ${3:+--urgency="$3"} 2>/dev/null || true
+}
+
+# Run a command as root, preferring a passwordless sudo, then pkexec. Returns
+# 127 when no escalation path exists so callers can degrade instead of hanging.
+as_root() {
+  if [[ $EUID -eq 0 ]]; then
+    "$@"
+  elif sudo -n true 2>/dev/null; then
+    sudo -n "$@"
+  elif command -v pkexec >/dev/null 2>&1; then
+    pkexec "$@"
+  else
+    return 127
+  fi
+}
+
+# ---------------------------------------------------------------- diagnosis --
+
+# The wired device NetworkManager currently has activated.
+detect_device() {
+  local dev
+  dev="$(nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null \
+         | awk -F: '$2=="ethernet" && $3=="connected" {print $1; exit}')"
+  [[ -n "$dev" ]] || dev="$(nmcli -t -f DEVICE,TYPE device status 2>/dev/null \
+         | awk -F: '$2=="ethernet" {print $1; exit}')"
+  printf '%s' "$dev"
+}
+
+has_default_route() { [[ -n "$(ip -4 route show default 2>/dev/null)" ]]; }
+
+# Tap devices left behind by a Mudfish process that is no longer running.
+stale_taps() {
+  local tap
+  for tap in $(ip -o link show type tun 2>/dev/null | awk -F': ' '{print $2}' | cut -d@ -f1); do
+    [[ "$tap" == tap* || "$tap" == tun* ]] || continue
+    printf '%s\n' "$tap"
+  done
+}
+
+mudfish_running() {
+  pgrep -x mudfish   >/dev/null 2>&1 && return 0
+  pgrep -x mudrun    >/dev/null 2>&1 && return 0
+  pgrep -x mudovpn   >/dev/null 2>&1 && return 0
+  pgrep -x mudflow   >/dev/null 2>&1 && return 0
+  pgrep -x mudwfp_proxy >/dev/null 2>&1 && return 0
+  return 1
+}
+
+gateway() { ip -4 route show default 2>/dev/null | awk '{print $3; exit}'; }
+
+reaches_internet() { ping -c1 -W2 "$probe_ip" >/dev/null 2>&1; }
+resolves_dns()     { getent hosts "$probe_host" >/dev/null 2>&1; }
+
+device="$(detect_device)"
+if [[ -z "$device" ]]; then
+  warn "No ethernet device found via NetworkManager. Nothing to repair."
+  exit 1
+fi
+
+step "Diagnosis"
+note "device            : $device"
+note "default route     : $(ip -4 route show default 2>/dev/null || true)"
+note "address           : $(ip -br -4 addr show "$device" 2>/dev/null | awk '{$1=$1};1')"
+note "mudfish running   : $(mudfish_running && echo yes || echo no)"
+
+taps="$(stale_taps)"
+note "tun/tap devices   : ${taps:-none}"
+
+if reaches_internet; then icmp=ok; else icmp=FAIL; fi
+if resolves_dns;     then dns=ok;  else dns=FAIL;  fi
+note "ping $probe_ip      : $icmp"
+note "dns                : $dns"
+
+healthy=true
+has_default_route  || healthy=false
+[[ "$icmp" == ok ]] || healthy=false
+
+if [[ "$mode" == "check" ]]; then
+  step "Result"
+  if $healthy; then note "Link looks healthy. No repair needed."; exit 0; fi
+  note "Link looks BROKEN. Re-run without --check to repair."
+  exit 1
+fi
+
+if $healthy && [[ "$mode" != "force" ]]; then
+  step "Result"
+  note "Link looks healthy, leaving it alone. Use --force to repair anyway."
+  # Always give feedback: this is bound to a waybar right-click, where a silent
+  # exit is indistinguishable from the click not registering.
+  notify "Network is healthy" "Default route present on $device. Nothing to repair."
+  exit 0
+fi
+
+# ------------------------------------------------------------------ repair --
+
+notify "Network recovery" "Restoring routing on $device..."
+
+# 1. Remove tap devices orphaned by a dead Mudfish. Deleting the device makes
+#    the kernel drop every route that pointed at it, which is most of the mess.
+if [[ -n "$taps" ]] && ! mudfish_running; then
+  step "Removing stale tunnel devices (no Mudfish process alive)"
+  while read -r tap; do
+    [[ -n "$tap" ]] || continue
+    if as_root ip link delete "$tap" 2>/dev/null; then
+      note "deleted $tap"
+    else
+      rc=$?
+      [[ $rc -eq 127 ]] && warn "no root available, left $tap in place" \
+                        || warn "could not delete $tap"
+    fi
+  done <<< "$taps"
+elif [[ -n "$taps" ]]; then
+  step "Leaving tunnel devices alone (Mudfish is still running)"
+  note "stop Mudfish first if the tunnel is wedged"
+fi
+
+# 2. Rebuild the wired profile's IP configuration. This is what actually puts
+#    the default route, address and resolv.conf back. `device reapply` is not
+#    enough here: NM believes its config is already applied, so it no-ops.
+step "Rebuilding NetworkManager configuration for $device"
+uuid="$(nmcli -g GENERAL.CON-UUID device show "$device" 2>/dev/null)"
+if [[ -n "$uuid" && "$uuid" != "--" ]]; then
+  note "profile $uuid"
+  nmcli connection down "$uuid" >/dev/null 2>&1 || warn "connection down failed (may already be down)"
+  sleep 1
+  if nmcli connection up "$uuid" >/dev/null 2>&1; then
+    note "profile reactivated"
+  else
+    warn "connection up failed"
+  fi
+else
+  note "no active profile; asking NetworkManager to reconnect the device"
+  nmcli device connect "$device" >/dev/null 2>&1 || warn "device connect failed"
+fi
+
+# Give DHCP a moment to land the lease and the default route.
+for _ in $(seq 1 15); do
+  has_default_route && break
+  sleep 1
+done
+
+# NetworkManager penalises a fresh default route by +20000 until its own
+# connectivity check clears, so the metric reads e.g. 20100 for a second or two
+# before settling back to 100. Wait that out, otherwise verification below
+# reports a transient number that looks like damage.
+settle_connectivity() {
+  nmcli networking connectivity check >/dev/null 2>&1 || true
+  local i
+  for i in $(seq 1 10); do
+    [[ "$(nmcli -g CONNECTIVITY general 2>/dev/null)" == "full" ]] && return 0
+    sleep 1
+  done
+  return 1
+}
+has_default_route && settle_connectivity
+
+# 3. Last resort: NetworkManager itself is wedged.
+if ! has_default_route; then
+  step "Still no default route; restarting NetworkManager"
+  if as_root systemctl restart NetworkManager 2>/dev/null; then
+    for _ in $(seq 1 20); do
+      has_default_route && break
+      sleep 1
+    done
+  else
+    warn "could not restart NetworkManager (no root)"
+  fi
+fi
+
+# ---------------------------------------------------------------- verdict ---
+
+step "Verification"
+note "default route     : $(ip -4 route show default 2>/dev/null || echo MISSING)"
+note "address           : $(ip -br -4 addr show "$device" 2>/dev/null | awk '{$1=$1};1')"
+
+ok=true
+has_default_route || ok=false
+if reaches_internet; then note "ping $probe_ip      : ok"; else note "ping $probe_ip      : FAIL"; ok=false; fi
+if resolves_dns;     then note "dns                : ok"; else note "dns                : FAIL"; ok=false; fi
+
+# The IPv6 guard's state is deliberately preserved across a repair: bringing the
+# profile up reapplies whatever ipv6.method the guard last set.
+if [[ -n "${uuid:-}" && "$uuid" != "--" ]]; then
+  note "ipv6 guard        : ipv6.method=$(nmcli -g ipv6.method connection show "$uuid" 2>/dev/null)"
+fi
+
+pkill -RTMIN+11 waybar 2>/dev/null || true
+
+step "Result"
+if $ok; then
+  note "Network restored. No reboot needed."
+  notify "Network restored" "Default route is back on $device."
+  exit 0
+fi
+note "Recovery INCOMPLETE. Remaining state is printed above."
+note "Next: check 'journalctl -u NetworkManager -n 50' and $mudfish_var/mudrun_stdout.txt"
+notify "Network recovery failed" "See terminal output." critical
+exit 1

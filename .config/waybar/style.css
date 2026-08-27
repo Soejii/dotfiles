@@ -61,24 +61,12 @@ window#waybar.empty #window {
 #pulseaudio,
 #custom-volume,
 #custom-warp,
+#custom-mudfish-ipv6,
 #battery,
 #custom-bluetooth,
 #custom-powermenu {
   padding: 4px 12px;
   color: #cdd6f4;
-}
-
-/* invisible when idle timers are healthy (empty text, no padding) */
-#custom-hypridle.inhibited {
-  padding: 4px 12px;
-  color: #f9e2af;
-}
-
-/* Wayland-protocol inhibit: the channel hypridle cannot see. Peach, not yellow,
-   because unlike a normal D-Bus inhibit this means the 5-min lock is broken. */
-#custom-hypridle.waylandinhibit {
-  padding: 4px 12px;
-  color: #fab387;
 }
 
 #custom-hypridle.dead {
@@ -96,6 +84,22 @@ window#waybar.empty #window {
 
 #custom-warp.off {
   color: #585b70;
+}
+
+#custom-mudfish-ipv6.on {
+  color: #a6e3a1;
+}
+
+#custom-mudfish-ipv6.switching {
+  color: #f9e2af;
+}
+
+#custom-mudfish-ipv6.off {
+  color: #585b70;
+}
+
+#custom-mudfish-ipv6.error {
+  color: #f38ba8;
 }
 
 #custom-bluetooth {
