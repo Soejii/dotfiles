@@ -76,8 +76,10 @@ def main():
     try:
         fd = os.open(node, os.O_RDWR)
     except PermissionError:
-        print(f"timeless82-clock: no access to {node} (udev uaccess rule missing?)")
-        return 1
+        # At boot, udev can announce the keyboard before logind has granted the
+        # active desktop user access. A later seat-change event runs us again.
+        print(f"timeless82-clock: no access to {node} yet, skipping")
+        return 0
 
     try:
         block = bytearray(0x30)
