@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Inspect a local PDF and cache its text extraction by content hash.
+# Status information goes to stderr. The reusable Markdown path goes to stdout.
+
+set -euo pipefail
+
+PDF_INSPECTOR_BIN='/home/suji/.npm-global/bin/pdf-inspector'
+PDF_CACHE_ROOT='/home/suji/.local/share/pdf-inspector/extracted'
+
+usage() {
+  printf 'Usage: pdf-text-cache [--rename-to <citation filename>] <file.pdf>\n' >&2
+}
+
+rename_to=''
+if [[ "${1:-}" == '--rename-to' ]]; then
+  if [[ "$#" -ne 3 ]]; then
+    usage
+    exit 2
+  fi
+  rename_to="$2"
+  shift 2
+fi
+
+if [[ "$#" -ne 1 ]]; then
+  usage
+  exit 2
+fi
+
+input_path="$1"
+if [[ ! -f "$input_path" ]]; then
+  printf 'pdf-text-cache: file not found: %s\n' "$input_path" >&2
+  exit 2
+fi
+if [[ ! -x "$PDF_INSPECTOR_BIN" ]]; then
+  printf 'pdf-text-cache: executable not found: %s\n' "$PDF_INSPECTOR_BIN" >&2
+  exit 2
+fi
+
+pdf_path=$(/usr/bin/realpath -e -- "$input_path")
+if [[ -n "$rename_to" ]]; then
+  if [[ "$rename_to" == */* || "$rename_to" == *$'\n'* ]]; then
+    printf 'pdf-text-cache: rename target must be one safe filename, not a path\n' >&2
+    exit 2
+  fi
+  [[ "$rename_to" == *.pdf ]] || rename_to="$rename_to.pdf"
+  proposed_path="$(/usr/bin/dirname -- "$pdf_path")/$rename_to"
+  if [[ "$proposed_path" != "$pdf_path" && -e "$proposed_path" ]]; then
+    printf 'pdf-text-cache: rename target already exists: %s\n' "$proposed_path" >&2
+    exit 2
+  fi
+fi
+
+rename_source() {
+  [[ -n "$rename_to" ]] || return 0
+  local renamed_path
+  renamed_path="$(/usr/bin/dirname -- "$pdf_path")/$rename_to"
+  if [[ "$renamed_path" != "$pdf_path" ]]; then
+    if [[ -e "$renamed_path" ]]; then
+      printf 'pdf-text-cache: rename target already exists: %s\n' "$renamed_path" >&2
+      exit 2
+    fi
+    /usr/bin/mv -- "$pdf_path" "$renamed_path"
+    pdf_path="$renamed_path"
+  fi
+  printf 'pdf-text-cache: source=%s\n' "$pdf_path" >&2
+}
+
+detect_json=$("$PDF_INSPECTOR_BIN" detect "$pdf_path" --json) || {
+  printf 'pdf-text-cache: detection failed: %s\n' "$pdf_path" >&2
+  exit 2
+}
+
+IFS=$'\t' read -r pdf_type page_count ocr_pages < <(
+  printf '%s' "$detect_json" | /usr/bin/python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)
+ocr = data.get("pagesNeedingOcr") or []
+print(
+    str(data.get("pdfType", "Unknown")),
+    str(data.get("pageCount", "Unknown")),
+    ",".join(str(page) for page in ocr) or "none",
+    sep="\t",
+)
+'
+)
+
+printf 'pdf-text-cache: type=%s pages=%s ocr=%s\n' \
+  "$pdf_type" "$page_count" "$ocr_pages" >&2
+
+if [[ "$pdf_type" != 'TextBased' || "$ocr_pages" != 'none' ]]; then
+  printf 'pdf-text-cache: text extraction stopped; use OCR or vision only for the reported pages\n' >&2
+  exit 3
+fi
+
+content_hash=$(/usr/bin/sha256sum -- "$pdf_path" | /usr/bin/cut -d' ' -f1)
+cache_dir="$PDF_CACHE_ROOT/$content_hash"
+/usr/bin/mkdir -p -- "$cache_dir"
+
+shopt -s nullglob
+cached_markdown=("$cache_dir"/*.md)
+if [[ "${#cached_markdown[@]}" -gt 0 ]]; then
+  printf 'pdf-text-cache: cache hit\n' >&2
+  rename_source
+  printf '%s\n' "${cached_markdown[0]}"
+  exit 0
+fi
+
+pdf_name=$(/usr/bin/basename -- "${pdf_path%.pdf}")
+safe_name=$(printf '%s' "$pdf_name" | /usr/bin/sed \
+  -e 's/[^[:alnum:]._-]/-/g' \
+  -e 's/--*/-/g' \
+  -e 's/^-//' \
+  -e 's/-$//')
+[[ -n "$safe_name" ]] || safe_name='document'
+
+markdown_path="$cache_dir/$safe_name.md"
+temporary_path=$(/usr/bin/mktemp "$cache_dir/.extract.XXXXXX.md")
+trap '/usr/bin/rm -f -- "$temporary_path"' EXIT
+
+"$PDF_INSPECTOR_BIN" "$pdf_path" -o "$temporary_path" >/dev/null
+/usr/bin/mv -- "$temporary_path" "$markdown_path"
+trap - EXIT
+
+printf 'pdf-text-cache: extracted\n' >&2
+rename_source
+printf '%s\n' "$markdown_path"
