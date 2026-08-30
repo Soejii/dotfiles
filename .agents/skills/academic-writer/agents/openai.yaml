@@ -1,0 +1,6 @@
+interface:
+  display_name: "Academic Writer"
+  short_description: "Controlled Indonesian academic writing workflow"
+  default_prompt: "Use $academic-writer to work on this Indonesian academic assignment one section at a time."
+policy:
+  allow_implicit_invocation: false
