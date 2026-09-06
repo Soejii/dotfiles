@@ -59,7 +59,7 @@
     "format-ethernet": "󰈀 Wired",
     "format-disconnected": "⚠ Disconnected",
     "tooltip": true,
-    "on-click": "alacritty -e nmtui"
+    "on-click": "~/.config/waybar/scripts/drawer.sh network"
   },
   "memory": {
     "interval": 5,
