@@ -73,7 +73,7 @@
     "signal": 8,
     "format": "{}",
     "tooltip": true,
-    "on-click": "pavucontrol",
+    "on-click": "~/.config/waybar/scripts/drawer.sh audio",
     "on-click-right": "~/.config/waybar/scripts/audio-switch.sh",
     "on-click-middle": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle && pkill -RTMIN+8 waybar",
     "on-scroll-up": "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+ && pkill -RTMIN+8 waybar",
