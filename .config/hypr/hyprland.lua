@@ -238,7 +238,7 @@ hl.workspace_rule({ workspace = "20", monitor = "HDMI-A-1" })
 local mainMod = "SUPER"
 
 hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("/home/suji/.local/bin/hypr-cheatsheet"))
-hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("pidof hyprlock || hyprlock"))
+hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("pidof hyprlock || systemd-run --user --scope --quiet hyprlock"))
 hl.bind(mainMod .. " + C", hl.dsp.exec_cmd([[cliphist list | wofi --dmenu --width=1200 --height=600 --prompt="Clipboard" | cliphist decode | wl-copy]]))
 hl.bind(mainMod .. " + T", hl.dsp.exec_cmd(terminal))
 hl.bind(mainMod .. " + Escape", hl.dsp.exec_cmd("alacritty --class sysmon -e btop"))
