@@ -33,6 +33,9 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("nm-applet")
     -- Run idle management and its gamepad adapter as supervised user services.
     hl.exec_cmd("systemctl --user start hypridle.service gamepad-idle-inhibit.service")
+    -- Control drawer. Supervised because its death is silent: the waybar
+    -- power glyph would simply stop responding with no other symptom.
+    hl.exec_cmd("systemctl --user start quickshell.service")
     hl.exec_cmd("wl-paste --type text --watch cliphist store")
     hl.exec_cmd("wl-paste --type image --watch cliphist store")
     hl.exec_cmd("blueman-applet")
