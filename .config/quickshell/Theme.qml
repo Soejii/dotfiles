@@ -15,6 +15,7 @@ Singleton {
     readonly property color accent:  "#89b4fa"
     readonly property color danger:  "#f38ba8"
     readonly property color ok:      "#a6e3a1"
+    readonly property color warn:    "#fab387"  // peach, for temperature bands
 
     readonly property string fontFamily: "JetBrainsMono Nerd Font"
 
