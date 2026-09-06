@@ -20,6 +20,7 @@ PanelWindow {
     // The rail hides itself while only one pane exists, so it appears on
     // its own the day a second pane lands.
     readonly property var panes: [
+        { id: "calendar", icon: "󰃭", label: "Calendar", src: "panes/CalendarPane.qml" },
         { id: "network",  icon: "󰤨", label: "Network",  src: "panes/NetworkPane.qml"  },
         { id: "audio",    icon: "󰕾", label: "Audio",    src: "panes/AudioPane.qml"    },
         { id: "power",    icon: "󰐥", label: "Power",    src: "panes/PowerPane.qml"    }

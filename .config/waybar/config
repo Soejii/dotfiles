@@ -35,7 +35,7 @@
     "interval": 1,
     "format": "{:%H:%M:%S}",
     "timezone": "Asia/Jakarta",
-    "on-click": "gsimplecal",
+    "on-click": "~/.config/waybar/scripts/drawer.sh calendar",
     "tooltip-format": "<b>{:%A, %d %B %Y}</b>\n{calendar}",
     "calendar": {
       "mode": "month",
