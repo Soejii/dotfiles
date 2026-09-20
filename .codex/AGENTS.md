@@ -4,9 +4,56 @@ These preferences apply to ALL projects. Project-specific AGENTS.md files may ad
 
 This machine is **Arch Linux** (user `suji`, home `/home/suji`, shell `bash`). Code lives in `~/CODE`.
 
-## Operating mode
+## Delegation routing
 
-Complete every task directly in the current Codex session. Do not hand work to other agents or processes.
+The top-level Codex session is the orchestrator. It owns scope, judgment,
+verification, and final sign-off, even when implementation work is delegated.
+
+### Delegation gate
+
+Before starting any non-trivial implementation, fix, or change, ask Suji in
+plain text what to delegate and which model and reasoning effort to use, then
+wait for his typed reply. Suggest one sensible default with a one-sentence
+reason, but leave the choice open. Suji's reply is authoritative. If he names a
+model or effort, use exactly that choice.
+
+Skip this gate for trivial work such as reads, lookups, one-line edits, and
+answering questions. Also skip it when Suji says "just do it", "proceed", asks
+the orchestrator to do the work itself, or pre-authorizes a model for the task
+or session.
+
+Use these tiers when suggesting a default:
+
+- **The orchestrator**: debugging, root-cause analysis, security-sensitive
+  code, architecture, ambiguous changes, high-risk changes, and any work Suji
+  explicitly wants handled directly.
+- **A fast worker**, normally `gpt-5.6-luna` at low or medium effort:
+  mechanical and well-specified work such as scaffolding, repetitive edits,
+  renames, formatting, and simple fixes.
+- **A stronger worker**, normally `gpt-5.6-luna` or `gpt-5.6-terra` at high
+  effort: multi-file or moderate-reasoning implementation that is still
+  clearly specified.
+
+Use Codex's native subagents for concrete, bounded tasks that can run
+independently. Do not launch Cockpit, OpenCode, or another external agent
+process unless Suji explicitly requests it. The orchestrator must inspect the
+resulting diff, run the final verification itself, and report what was
+delegated, to which model and effort, and any corrections made during sign-off.
+
+### Never delegate
+
+- Security-sensitive code, including authentication, cryptography, and input
+  validation
+- Debugging and root-cause analysis
+- Final correctness review and sign-off
+
+## Web research
+
+Always use Hound for web searches. If Hound fails or cannot search the required source, ask Suji before using another web-search tool.
+
+## Peer review
+
+Peer review is opt-in. Use the `peer-review` skill only when Suji explicitly requests a review. You may remind him that review is available, but do not make it an automatic commit gate.
 
 ## A regression test must be proven red first
 
@@ -35,50 +82,15 @@ rather than a regression test.
 
 ## PDF Handling
 
-**Always run `/home/suji/.local/bin/pdf-text-cache <file.pdf>` first. Never open a
-local PDF with the Read tool before checking whether it has a real text layer.** The
-wrapper runs `pdf-inspector detect`, caches a text-based extraction by the PDF's
-SHA-256 content hash, and prints the reusable Markdown path. The vision path pushes
-every page through a model's context; `pdf-inspector` is a local native binary that
-costs zero tokens. Installed 2026-08-02 at
-`/home/suji/.npm-global/bin/pdf-inspector` (npm `@firecrawl/pdf-inspector`, prebuilt
-Rust/napi binary, no toolchain needed).
+Use the `college-pdf-ingest` skill whenever Suji attaches, links, or points to a PDF, unless he explicitly says it is temporary, unrelated to college, or inspection-only. Ask for the course when it was not provided, even if the answer looks obvious.
 
-Note the CLI differs from the GitHub README, which documents an abandoned `cargo`
-path: the crates.io crate is stuck at 0.1.0 while npm ships 1.11.2. There is no
-`pdf2md` or `detect-pdf` command. It is:
+Always run the local cache wrapper before reading a local PDF:
 
 ```bash
-/home/suji/.local/bin/pdf-text-cache <file.pdf>  # detect, extract once, and print the cached Markdown path
-/home/suji/.local/bin/pdf-text-cache --rename-to 'The Many Levels of Inquiry - (Banchi & Bell, 2008)' <file.pdf>
-/home/suji/.npm-global/bin/pdf-inspector <file.pdf> --pages 1,3,5  # narrow direct inspection when needed
+/home/suji/.local/bin/pdf-text-cache <file.pdf>
 ```
 
-The routing rule:
-
-1. Run `/home/suji/.local/bin/pdf-text-cache`. A successful run prints the extraction under
-   `/home/suji/.local/share/pdf-inspector/extracted/<sha256>/`. Never create an
-   extracted `.md` beside the PDF. Search or read only the relevant cached sections;
-   do not read the whole Markdown by reflex. A 36-page document is about 10k tokens.
-2. If the wrapper reports scanned or OCR-required pages and exits 3, use OCR or vision
-   only for those pages, 20 pages at a time for anything over 20.
-   Photocopied course packs and photographed handouts land here; publisher journal
-   PDFs generally do not.
-3. Once an academic paper's title, author form, and year have been verified from the
-   source, rename it with the wrapper using `Title - (In-text citation, Year).pdf`.
-   Use `&` for two authors and `FirstAuthor et al.` for three or more. Replace a `/`
-   in a title with `-` because `/` cannot appear in a Linux filename. Never infer the
-   citation identity from an unverified download filename.
-4. Treat Downloads as an inbox. Move a source being retained into the project's
-   established source or reference folder. The content-hash cache remains reusable
-   if the PDF is renamed or moved. Cite the original PDF, never the cached Markdown.
-
-**Known weakness, verified not assumed: tables degrade.** On a real 36-page proposal
-the prose, headings, and in-text citations came out clean, but `Tabel 1.1` lost its
-header row to an `###` heading, flattened three rows into running paragraphs with the
-columns interleaved, and split the remainder into two pipe tables with mismatched
-column counts. So when a specific table's values matter, read those pages visually with
-`--pages` narrowing first; do not quote figures straight out of the extracted markdown.
+The wrapper uses `pdf-inspector` 1.17.0 selective OCR in `Auto` mode, caches by SHA-256 and package version, and prints the reusable Markdown path. Read only relevant cached sections. For retained sources, the skill creates a same-basename PDF and faithful Markdown transcript under `/home/suji/document/college`. Assignments do not require transcript twins. Tables remain review-sensitive, so visually inspect a table page before relying on its values.
 
 ## Flutter projects
 
