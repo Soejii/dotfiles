@@ -1,13 +1,14 @@
 [Unit]
-Description=Run codex-ping at 09:00 / 14:00 / 19:00 (anchor the 5h window)
+Description=Run the dual-client Codex window pinger at 09:00, 14:05, and 19:10
 
 [Timer]
-OnCalendar=*-*-* 09,14,19:00:00
-# Persistent = catch up a missed run after the box was off.
+OnCalendar=*-*-* 09:00:00
+OnCalendar=*-*-* 14:05:00
+OnCalendar=*-*-* 19:10:00
+AccuracySec=1s
 Persistent=true
-# Wake the machine from suspend to fire. If your user lacks permission to
-# program the RTC alarm, drop this line and the ping just waits.
 WakeSystem=true
+Unit=codex-ping.service
 
 [Install]
 WantedBy=timers.target
