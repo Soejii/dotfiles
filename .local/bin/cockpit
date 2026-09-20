@@ -2,6 +2,7 @@
 # cockpit - orchestrator-driven tmux cockpit over a persistent opencode server.
 #
 #   cockpit                                  launch Claude orchestrator
+#   cockpit --codex                          launch Codex orchestrator with --yolo
 #   cockpit oc [model]                       launch opencode orchestrator
 #   cockpit spawn [flags] <name> "<task>" [model] [dir]
 #   cockpit say <name> "<task>" [dir]         queue follow-up in the same tab
@@ -28,6 +29,7 @@ VARIANT="${COCKPIT_VARIANT:-max}"
 ORCH_CMD="${COCKPIT_ORCH_CMD:-claude --dangerously-skip-permissions}"
 MAX_WORKERS="${COCKPIT_MAX:-6}"
 OPENCODE="$(command -v opencode 2>/dev/null || printf '%s' /usr/bin/opencode)"
+CODEX="$(command -v codex 2>/dev/null || printf '%s' "$HOME/.local/bin/codex")"
 SELF="$(readlink -f "$0")"
 RUNTIME_BASE="${XDG_RUNTIME_DIR:-/tmp}/cockpit"
 ROOT="${RUNTIME_BASE}/${PORT}"
@@ -1272,6 +1274,7 @@ gc_runtime() {
 show_help() {
   /usr/bin/printf '%s\n' \
     'cockpit                                  launch Claude orchestrator' \
+    'cockpit --codex                          launch Codex orchestrator with --yolo' \
     'cockpit oc [model]                       launch opencode orchestrator' \
     'cockpit spawn [--replace] [--read-only] <name> "<task>" [model] [dir]' \
     'cockpit say <name> "<task>" [dir]         queue in the same worker tab' \
@@ -1289,6 +1292,12 @@ init_runtime
 
 case "${1:-up}" in
   up|start|"")
+    launch
+    ;;
+
+  --codex|codex)
+    [[ -x "$CODEX" ]] || die "codex executable not found at '$CODEX'"
+    printf -v ORCH_CMD '%q --yolo' "$CODEX"
     launch
     ;;
 
