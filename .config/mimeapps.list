@@ -6,6 +6,7 @@ application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=libreoffice-4.
 application/vnd.openxmlformats-officedocument.wordprocessingml.document=libreoffice.desktop;
 application/zip=libreoffice-8.desktop;
 application/x-bittorrent=com.github.persepolisdm.persepolis.desktop;
+text/html=code.desktop;
 
 [Default Applications]
 application/pdf=org.gnome.Evince.desktop
