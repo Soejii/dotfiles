@@ -1,0 +1,736 @@
+#!/usr/bin/env python3
+"""Owns the Hyprland monitor arrangement: which output is main (the one in
+front of you), what sits to its left and right, and which ones mirror it.
+
+The arrangement lives in display-layout.json and is compiled to
+display-layout.gen.lua, which hyprland.lua dofiles. That is the whole point of
+the generated file: a change made here IS the config, so it survives
+`hyprctl reload` and a restart exactly as if hyprland.lua had been edited by
+hand. Monitor modes are deliberately NOT managed here; edit the "mode" field in
+display-layout.json if a refresh rate ever needs changing.
+
+Mirroring an output takes its block of ten away, so its workspaces are folded
+onto the end of main's block and remembered in display-merged.json; un-mirroring
+reads that back and puts them where they were. The record is the whole trick:
+the moment a workspace is folded in, nothing in Hyprland's own state still says
+which monitor produced it.
+
+Workspace ranges follow the arrangement, never the connector name: main owns
+1-10, the next monitor to its right 11-20, then further right, then leftwards
+from main. Those bases are written to display-workspaces.json, which ws-switch,
+ws-move and ws-cycle read so Mod+1..0 keeps meaning "this monitor's block".
+
+Usage:
+  hypr-display state                  JSON for the drawer's Display pane
+  hypr-display set <output> <slot>    slot: main | left | right | mirror
+  hypr-display apply                  recompile and reload, changing nothing
+  hypr-display focused                "<monitor> <workspace base>", for ws-*
+"""
+
+import fcntl
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+HOME = os.path.expanduser("~")
+CFG = os.path.join(HOME, ".config", "hypr")
+LAYOUT = os.path.join(CFG, "display-layout.json")
+GEN_LUA = os.path.join(CFG, "display-layout.gen.lua")
+WS_MAP = os.path.join(CFG, "display-workspaces.json")
+MERGED = os.path.join(CFG, "display-merged.json")
+LOCK = os.path.join(CFG, ".display-layout.lock")
+TRACE = os.path.expanduser("~/.cache/hypr-display.log")
+
+HYPRCTL = shutil.which("hyprctl") or "/usr/bin/hyprctl"
+
+# Everything that reaches the generated Lua as a bare string is checked against
+# this first, so a weird EDID-derived name can never break out of its quotes.
+SAFE = re.compile(r"^[A-Za-z0-9@._:+-]+$")
+
+SLOTS = ("main", "left", "right", "mirror")
+
+
+def trace(label):
+    """Append a snapshot of every workspace to ~/.cache/hypr-display.log.
+
+    A layout change is a sequence of asynchronous dispatches, and the settled
+    state looks identical whether or not something went wrong halfway through,
+    so the only way to see a fault of that kind is to record each step as it
+    happens."""
+    try:
+        act = hypr_json("activeworkspace")
+        act_id = act.get("id") if isinstance(act, dict) else None
+        rows = " ".join(
+            f"{'*' if w.get('id') == act_id else ''}{w.get('id')}:{w.get('name')}"
+            f"@{w.get('monitor')}{'' if w.get('windows') else '(EMPTY)'}"
+            for w in sorted(hypr_json("workspaces"), key=lambda w: w.get("id") or 0))
+        os.makedirs(os.path.dirname(TRACE), exist_ok=True)
+        if os.path.exists(TRACE) and os.path.getsize(TRACE) > 200_000:
+            os.remove(TRACE)
+        with open(TRACE, "a") as fh:
+            fh.write(f"{time.strftime('%H:%M:%S')}.{int(time.time() * 1000) % 1000:03d} "
+                     f"[{os.getpid()}] {label:<18} {rows}\n")
+    except OSError:
+        pass
+
+
+def resync_waybar():
+    """Renumbering a workspace with change_id does not emit the create/destroy
+    events waybar's hyprland/workspaces module listens for, so its buttons keep
+    the ids the workspaces had before the merge. Those ghosts are worse than
+    cosmetic: clicking one asks Hyprland to activate a workspace that no longer
+    exists, and Hyprland obligingly creates it, which is where the empty
+    workspaces came from. SIGUSR2 makes waybar reload and re-read the truth."""
+    subprocess.run([shutil.which("pkill") or "/usr/bin/pkill", "-SIGUSR2", "waybar"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def cmd_watch(seconds):
+    """Keep tracing after the run has finished. Everything this tool does is an
+    asynchronous dispatch, so a workspace conjured by one that lands late shows
+    up after the last step has already logged a clean state."""
+    end = time.time() + float(seconds)
+    last = None
+    while time.time() < end:
+        rows = tuple(sorted((w.get("id"), w.get("name"), w.get("monitor"), bool(w.get("windows")))
+                            for w in hypr_json("workspaces")))
+        rows = (rows, (hypr_json("activeworkspace") or {}).get("id"))
+        if rows != last:
+            trace("after")
+            last = rows
+        time.sleep(0.2)
+
+
+def die(msg):
+    print(msg, file=sys.stderr)
+    sys.exit(1)
+
+
+def safe(value, what):
+    if not SAFE.match(str(value)):
+        die(f"refusing to write unsafe {what}: {value!r}")
+    return str(value)
+
+
+def hypr(*args, capture=True):
+    cmd = [HYPRCTL] + list(args)
+    if not capture:
+        return subprocess.run(cmd, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL).returncode
+    return subprocess.run(cmd, capture_output=True, text=True).stdout
+
+
+def hypr_json(*args):
+    try:
+        return json.loads(hypr(*args, "-j") or "[]")
+    except json.JSONDecodeError:
+        return []
+
+
+def dispatch(expr):
+    subprocess.run([HYPRCTL, "dispatch", expr],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+# ---------------------------------------------------------------- live state
+
+def live_monitors():
+    """Connector name -> what Hyprland currently reports, with the logical size
+    already worked out (mode divided by scale, axes swapped for a rotated
+    output) because that, not the pixel mode, is what positions are measured in."""
+    out = {}
+    for m in hypr_json("monitors", "all"):
+        name = (m.get("name") or "").strip()
+        if not name:
+            continue
+        scale = float(m.get("scale") or 1) or 1.0
+        w = int(m.get("width") or 0)
+        h = int(m.get("height") or 0)
+        if int(m.get("transform") or 0) in (1, 3, 5, 7):
+            w, h = h, w
+        out[name] = {
+            "name": name,
+            "make": (m.get("make") or "").strip(),
+            "model": (m.get("model") or "").strip(),
+            "description": (m.get("description") or "").strip(),
+            "pxWidth": int(m.get("width") or 0),
+            "pxHeight": int(m.get("height") or 0),
+            "refresh": float(m.get("refreshRate") or 0),
+            "logicalWidth": int(round(w / scale)),
+            "logicalHeight": int(round(h / scale)),
+            "x": int(m.get("x") or 0),
+            "disabled": bool(m.get("disabled")),
+            "mirrorOf": (m.get("mirrorOf") or "none"),
+        }
+    return out
+
+
+def usable(live, name):
+    m = live.get(name)
+    return bool(m) and not m["disabled"] and m["logicalWidth"] > 0
+
+
+# -------------------------------------------------------------- layout state
+
+def default_entry():
+    return {"mode": "preferred", "scale": 1}
+
+
+def load_layout(live):
+    try:
+        with open(LAYOUT) as fh:
+            layout = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        layout = {}
+    layout.setdefault("version", 1)
+    layout.setdefault("monitors", {})
+    layout.setdefault("mirrors", [])
+    layout.setdefault("order", [])
+    return normalise(layout, live)
+
+
+def normalise(layout, live):
+    """Fold in anything newly plugged in, drop contradictions, and guarantee
+    exactly one main monitor that is actually able to show something."""
+    order = [n for n in layout["order"] if n not in layout["mirrors"]]
+    seen = set(order) | set(layout["mirrors"])
+
+    # A monitor Hyprland knows about but the layout does not (first run, or one
+    # just plugged in) joins at the right-hand end, keeping whatever left-to-right
+    # order Hyprland has already given it.
+    order += sorted((n for n in live if n not in seen), key=lambda n: live[n]["x"])
+
+    for name in order + list(layout["mirrors"]):
+        layout["monitors"].setdefault(name, default_entry())
+
+    layout["order"] = order
+    layout["mirrors"] = [n for n in layout["mirrors"] if n in layout["monitors"]]
+
+    main = layout.get("main")
+    if main not in order or not usable(live, main):
+        live_order = [n for n in order if usable(live, n)]
+        main = live_order[0] if live_order else (order[0] if order else None)
+    layout["main"] = main
+    # Main can never be a mirror of itself.
+    layout["mirrors"] = [n for n in layout["mirrors"] if n != main]
+    return layout
+
+
+def save_layout(layout):
+    write_atomic(LAYOUT, json.dumps(layout, indent=2) + "\n")
+
+
+def write_atomic(path, text):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh:
+        fh.write(text)
+    os.replace(tmp, path)
+
+
+# ------------------------------------------------------------------ geometry
+
+def compute(layout, live):
+    """Left-to-right placement plus the workspace base for each monitor.
+
+    Only connected, non-mirrored outputs are placed, so unplugging one closes
+    the gap instead of leaving a strip of coordinate space the cursor cannot
+    cross. Bases walk right from main first, then left, because that is the
+    order the monitors are reached from the chair."""
+    order = [n for n in layout["order"]
+             if usable(live, n) and n not in layout["mirrors"]]
+    main = layout["main"] if layout["main"] in order else (order[0] if order else None)
+
+    positions, x = {}, 0
+    for name in order:
+        positions[name] = (x, 0)
+        x += live[name]["logicalWidth"]
+
+    bases = {}
+    if main:
+        i = order.index(main)
+        walk = [order[i]] + order[i + 1:] + list(reversed(order[:i]))
+        for step, name in enumerate(walk):
+            bases[name] = 10 * step
+    return order, main, positions, bases
+
+
+# ----------------------------------------------------------------- rendering
+
+def fmt_scale(value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return "1"
+    return str(int(value)) if value.is_integer() else repr(round(value, 6))
+
+
+def monitor_line(layout, name, position, mirror=None):
+    entry = layout["monitors"].get(name, default_entry())
+    parts = [
+        f'output = "{safe(name, "output name")}"',
+        f'mode = "{safe(entry.get("mode") or "preferred", "mode")}"',
+        f'position = "{safe(position, "position")}"',
+        f'scale = {fmt_scale(entry.get("scale", 1))}',
+    ]
+    if mirror:
+        parts.append(f'mirror = "{safe(mirror, "mirror source")}"')
+    return "hl.monitor({ " + ", ".join(parts) + " })"
+
+
+def render_lua(layout, live, order, main, positions, bases):
+    out = [
+        "-- GENERATED by hypr-display. Do not edit by hand: the next layout",
+        "-- change overwrites it. Edit ~/.config/hypr/display-layout.json, or",
+        "-- use the Display pane in the Quickshell drawer.",
+        "--",
+        f"-- main (centre) output: {main or 'none'}",
+        "",
+    ]
+    for name in order:
+        px, py = positions[name]
+        out.append(monitor_line(layout, name, f"{px}x{py}"))
+    for name in layout["mirrors"]:
+        if name in live and main:
+            out.append(monitor_line(layout, name, "auto", mirror=main))
+
+    out.append("")
+    out.append("-- Workspace blocks follow the arrangement, not the connector:")
+    out.append("-- main owns 1-10, then rightwards from main, then leftwards.")
+    for name, base in sorted(bases.items(), key=lambda kv: kv[1]):
+        for n in range(1, 11):
+            ws = base + n
+            tail = ", default = true" if n == 1 else ""
+            out.append(f'hl.workspace_rule({{ workspace = "{ws}", '
+                       f'monitor = "{safe(name, "output name")}"{tail} }})')
+    return "\n".join(out) + "\n"
+
+
+# ------------------------------------------------------------------- applying
+
+def load_merged():
+    try:
+        with open(MERGED) as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_merged(data):
+    if data:
+        write_atomic(MERGED, json.dumps(data, indent=2) + "\n")
+        return
+    try:
+        os.remove(MERGED)
+    except OSError:
+        pass
+
+
+def read_bases():
+    try:
+        with open(WS_MAP) as fh:
+            return {k: int(v) for k, v in json.load(fh).items()}
+    except (OSError, ValueError, TypeError, AttributeError, json.JSONDecodeError):
+        return {}
+
+
+def owner_map(bases):
+    """Workspace id -> the monitor whose block of ten contains it."""
+    return {base + n: name for name, base in bases.items() for n in range(1, 11)}
+
+
+def live_workspaces():
+    out = {}
+    for ws in hypr_json("workspaces"):
+        wid = int(ws.get("id") or 0)
+        if wid >= 1:
+            out[wid] = int(ws.get("windows") or 0)
+    return out
+
+
+def first_free(base, taken):
+    for n in range(1, 11):
+        if base + n not in taken:
+            return base + n
+    return None
+
+
+def apply_renames(renames, settle=0.25):
+    """Naming is done in a second pass, after every id has changed. change_id
+    renames the workspace after itself, so a rename issued immediately after its
+    own change_id can be undone by it. `settle` is the wait for those id changes
+    to land, and is only needed when nothing else has happened in between."""
+    if not renames:
+        return
+    time.sleep(settle)
+    for wid, name in renames:
+        dispatch(f'hl.dsp.workspace.rename({{ workspace = {wid}, name = "{name}" }})')
+    time.sleep(0.15)
+
+
+def park_id(base, taken):
+    """Somewhere to shove an empty placeholder. The top free slot of its own
+    block is preferred, because it is on screen for a moment and an empty
+    workspace numbered inside the block reads as ordinary; an id like 900 does
+    not. Falls back outside the blocks only if the block is full."""
+    for n in range(10, 0, -1):
+        if base + n not in taken:
+            return base + n
+    n = 900
+    while n in taken:
+        n += 1
+    return n
+
+
+def fold_workspaces(old_bases, new_bases, main):
+    """Fold workspaces whose block is about to disappear onto the end of main's.
+
+    Called BEFORE the new config is applied, while the output losing its block
+    still exists. The ordering is the whole point: renumber after the reload and
+    the waybar shows that monitor's 1, 2, 3 sitting next to main's own 1, 2 for
+    as long as the reload and the renumbering take, which reads as a bug.
+
+    Returns {old id: new id} so the caller can follow focus through it."""
+    if main not in new_bases:
+        return {}
+    merged = load_merged()
+    counts = live_workspaces()
+    taken = set(counts)
+    new_owner = owner_map(new_bases)
+    old_owner = owner_map(old_bases)
+    main_base = new_bases[main]
+    renames, moves = [], {}
+
+    for wid in sorted(w for w in counts if w not in new_owner):
+        if counts[wid] < 1:
+            continue                          # empty: Hyprland drops it by itself
+        target = first_free(main_base, taken)
+        if target is None:
+            break                             # block full, leave it where it is
+        taken.discard(wid)
+        taken.add(target)
+        if wid != target:
+            dispatch(f"hl.dsp.workspace.change_id({{ workspace = {wid}, id = {target} }})")
+            moves[wid] = target
+        renames.append((target, str(target - main_base)))
+        source = old_owner.get(wid)
+        if source and source != main:
+            merged.setdefault(source, []).append(
+                {"slot": wid - old_bases.get(source, 0), "at": target})
+
+    # Saved before the renames: those sleep, and a run killed in that window
+    # would otherwise leave the workspaces folded in with nothing recording
+    # where they came from, making the un-mirror impossible.
+    save_merged(merged)
+    apply_renames(renames)
+    return moves
+
+
+def unfold_workspaces(new_bases):
+    """Hand each block back to the output that has it again, reading where every
+    workspace came from out of display-merged.json. Runs AFTER the reload,
+    because the monitor it is handing back to has to exist first.
+
+    What is stored per workspace is its SLOT (1-10) and its source monitor, not
+    its old id, so the round trip still lands correctly if the arrangement moved
+    while it was folded in.
+
+    Renaming is left to the caller: a handed-back workspace takes a name main
+    already uses, so it has to reach its own monitor before it is renamed or the
+    waybar briefly shows main holding two 1s and two 2s."""
+    merged = load_merged()
+    if not merged:
+        return {}, []
+    counts = live_workspaces()
+    taken = set(counts)
+    renames, moves = [], {}
+
+    for mon in [m for m in merged if m in new_bases]:
+        base = new_bases[mon]
+        for rec in sorted(merged[mon], key=lambda r: int(r["slot"])):
+            at = int(rec["at"])
+            if at not in taken:
+                continue                      # closed while it was folded in
+            target = base + int(rec["slot"])
+            if target != at and target in taken:
+                if counts.get(target, 0) == 0:
+                    # The compositor gives an output that has just got its block
+                    # back an empty default workspace, and it lands on exactly
+                    # the slot the first workspace is coming home to. Shove it
+                    # aside rather than letting it push the whole block along.
+                    parked = park_id(base, taken)
+                    dispatch(f"hl.dsp.workspace.change_id({{ workspace = {target}, id = {parked} }})")
+                    taken.discard(target)
+                    taken.add(parked)
+                    counts[parked] = 0
+                    renames.append((parked, str(parked - base)))
+                else:
+                    target = first_free(base, taken)
+                    if target is None:
+                        continue
+            taken.discard(at)
+            taken.add(target)
+            if at != target:
+                dispatch(f"hl.dsp.workspace.change_id({{ workspace = {at}, id = {target} }})")
+                moves[at] = target
+            renames.append((target, str(target - base)))
+        del merged[mon]
+
+    save_merged(merged)
+    return moves, renames
+
+
+def rehome_workspaces(bases):
+    """Workspace rules only bind at creation time, so an existing workspace
+    stays put when its block changes owner. Walk them once and move the ones
+    that now belong somewhere else. Focus is the caller's business."""
+    owner = owner_map(bases)
+    for ws in hypr_json("workspaces"):
+        wid = int(ws.get("id") or 0)
+        if wid < 1:
+            continue
+        target = owner.get(wid)
+        if target and ws.get("monitor") != target:
+            dispatch(f'hl.dsp.workspace.move({{ workspace = {wid}, monitor = "{target}" }})')
+
+
+def active_workspace_id():
+    active = hypr_json("activeworkspace")
+    wid = active.get("id") if isinstance(active, dict) else None
+    return wid if isinstance(wid, int) and wid >= 1 else None
+
+
+def tidy_placeholders(bases):
+    """Evict the empty default workspaces the compositor leaves on an output
+    that has just got its block back. They are that monitor's active workspace,
+    so nothing hides them and they never get collected: showing a real
+    workspace there instead is what makes them go away."""
+    counts = live_workspaces()
+    for mon in hypr_json("monitors"):
+        name = mon.get("name")
+        if name not in bases:
+            continue
+        active = mon.get("activeWorkspace") or {}
+        active_id = int(active.get("id") or 0)
+        if counts.get(active_id, 1) != 0:
+            continue
+        base = bases[name]
+        real = [base + n for n in range(1, 11) if counts.get(base + n, 0) > 0]
+        if real:
+            dispatch(f"hl.dsp.focus({{ workspace = {real[0]} }})")
+
+
+def restore_focus(wid):
+    # Focusing a workspace that no longer exists CREATES it, which is how an
+    # empty one gets left behind after the merge renumbers things.
+    if wid is not None and wid in live_workspaces():
+        dispatch(f"hl.dsp.focus({{ workspace = {wid} }})")
+
+
+def apply(layout, live, force=False):
+    old_bases = read_bases()          # read before the map is overwritten below
+    order, main, positions, bases = compute(layout, live)
+    lua = render_lua(layout, live, order, main, positions, bases)
+    ws_map = json.dumps(bases, indent=2) + "\n"
+
+    unchanged = (read_or_none(GEN_LUA) == lua and read_or_none(WS_MAP) == ws_map)
+    write_atomic(GEN_LUA, lua)
+    write_atomic(WS_MAP, ws_map)
+    if unchanged and not force:
+        return False
+
+    was_on = active_workspace_id()
+    trace("start")
+
+    # Fold first, while the output about to lose its block is still there, so
+    # the merged workspaces are already on main before anything is reconfigured.
+    folded = fold_workspaces(old_bases, bases, main)
+    rehome_workspaces(bases)
+    trace("folded")
+
+    hypr("reload", capture=False)
+    time.sleep(0.4)        # let the outputs settle before moving anything onto them
+    rehome_workspaces(bases)
+    trace("reloaded")
+    unfolded, renames = unfold_workspaces(bases)
+    if unfolded:
+        rehome_workspaces(bases)   # handed-back ids belong to another monitor now
+    # No settle wait: the id changes landed before the rehome above.
+    apply_renames(renames, settle=0)
+    trace("unfolded")
+    tidy_placeholders(bases)
+
+    landed = folded.get(was_on, was_on)        # follow focus through both passes
+    restore_focus(unfolded.get(landed, landed))
+
+    # Only when ids actually changed hands, so a plain left/right move does not
+    # reload the bar for nothing.
+    if folded or unfolded or old_bases != bases:
+        resync_waybar()
+    trace("done")
+    # Detached, so the pane cannot take it down with the run itself.
+    subprocess.Popen([sys.executable, os.path.abspath(__file__), "watch", "10"],
+                     start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return True
+
+
+def read_or_none(path):
+    try:
+        with open(path) as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+# ------------------------------------------------------------------ commands
+
+def place(order, name, main, side):
+    order = [n for n in order if n != name]
+    if main in order:
+        i = order.index(main)
+        order.insert(i if side == "left" else i + 1, name)
+    else:
+        order.append(name)
+    return order
+
+
+def cmd_set(name, slot):
+    if slot not in SLOTS:
+        die(f"unknown slot {slot!r}; expected one of {', '.join(SLOTS)}")
+    live = live_monitors()
+    layout = load_layout(live)
+    if name not in layout["monitors"]:
+        die(f"unknown output {name!r}")
+
+    if slot == "mirror":
+        if name == layout["main"]:
+            die("the main monitor cannot mirror itself")
+        layout["order"] = [n for n in layout["order"] if n != name]
+        if name not in layout["mirrors"]:
+            layout["mirrors"].append(name)
+    else:
+        # Leaving mirror mode puts the output back in the chain before anything
+        # else is decided, so "left" and "right" mean the same thing either way.
+        layout["mirrors"] = [n for n in layout["mirrors"] if n != name]
+        if name not in layout["order"]:
+            layout["order"] = place(layout["order"], name, layout["main"], "right")
+        if slot == "main":
+            layout["main"] = name          # arrangement is untouched: promoting
+        else:                              # a monitor does not move any monitor
+            layout["order"] = place(layout["order"], name, layout["main"], slot)
+
+    layout = normalise(layout, live)
+    save_layout(layout)
+    apply(layout, live)
+    print(json.dumps(state(layout, live), indent=2))
+
+
+def cmd_apply():
+    live = live_monitors()
+    layout = load_layout(live)
+    save_layout(layout)
+    apply(layout, live)
+
+
+def state(layout, live):
+    order, main, positions, bases = compute(layout, live)
+    merged = load_merged()
+    rows = []
+
+    def row(name, slot):
+        m = live.get(name, {})
+        base = bases.get(name)
+        model = m.get("model") or m.get("description") or name
+        return {
+            "name": name,
+            "label": model,
+            "make": m.get("make", ""),
+            "slot": slot,
+            "connected": usable(live, name),
+            "width": m.get("logicalWidth", 0),
+            "height": m.get("logicalHeight", 0),
+            "refresh": round(m.get("refresh", 0)),
+            "mode": layout["monitors"].get(name, default_entry()).get("mode", ""),
+            "x": positions.get(name, (0, 0))[0],
+            "workspaces": f"{base + 1}-{base + 10}" if base is not None else "",
+            "merged": len(merged.get(name, [])) if slot == "mirror" else 0,
+        }
+
+    main_index = order.index(main) if main in order else -1
+    for i, name in enumerate(order):
+        rows.append(row(name, "main" if name == main
+                        else "left" if i < main_index else "right"))
+    for name in layout["mirrors"]:
+        rows.append(row(name, "mirror"))
+    for name in layout["order"]:
+        if name not in order and name not in layout["mirrors"]:
+            rows.append(row(name, "offline"))
+    return {"main": main, "monitors": rows}
+
+
+def cmd_focused():
+    """Print "<monitor> <base>" for the focused output, for ws-switch, ws-move
+    and ws-cycle. Deliberately lean -- one hyprctl call and a file read, no
+    layout normalising -- because this runs on every Mod+N press."""
+    name = ""
+    for m in hypr_json("monitors"):
+        if m.get("focused"):
+            name = (m.get("name") or "").strip()
+            break
+    try:
+        with open(WS_MAP) as fh:
+            base = int(json.load(fh).get(name, 0))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        # Only reached if the generated map is gone; matches the fallback
+        # workspace rules hyprland.lua falls back to in the same situation.
+        base = {"DP-1": 0, "HDMI-A-1": 10}.get(name, 0)
+    print(f"{name} {base}")
+
+
+def cmd_state():
+    live = live_monitors()
+    print(json.dumps(state(load_layout(live), live), indent=2))
+
+
+def with_lock(fn):
+    """Two overlapping runs would interleave their dispatches and race each
+    other's focus restore, which is how a click landing while the previous one
+    is still settling produces a workspace that should not exist. Second run
+    waits rather than overlapping."""
+    os.makedirs(CFG, exist_ok=True)
+    with open(LOCK, "w") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            return fn()
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        return
+    if args[0] == "state":
+        cmd_state()
+    elif args[0] == "focused":
+        cmd_focused()
+    elif args[0] == "watch":
+        cmd_watch(args[1] if len(args) > 1 else 5)
+    elif args[0] == "apply":
+        with_lock(cmd_apply)
+    elif args[0] == "set":
+        if len(args) != 3:
+            die("usage: hypr-display set <output> <main|left|right|mirror>")
+        with_lock(lambda: cmd_set(args[1], args[2]))
+    else:
+        die(f"unknown command {args[0]!r}")
+
+
+if __name__ == "__main__":
+    main()

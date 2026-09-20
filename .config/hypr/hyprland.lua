@@ -6,11 +6,27 @@
 ------------------
 ---- MONITORS ----
 ------------------
--- Desktop: one 2K (DP-1) + one 1080p (HDMI-A-1) to its right. See old
--- monitors.conf notes; connector names/modes verified via `hyprctl monitors`.
-hl.monitor({ output = "DP-1",     mode = "highrr",         position = "0x0",    scale = 1 }) -- MSI MAG 275QF, 2560x1440 @ max (165/180, not 170)
-hl.monitor({ output = "HDMI-A-1", mode = "1920x1080@100",  position = "2560x0", scale = 1 }) -- 27B1H2, 1080p secondary
-hl.monitor({ output = "",         mode = "preferred",      position = "auto",   scale = 1 }) -- catch-all for any other output
+-- Desktop: one 2K (DP-1) + one 1080p (HDMI-A-1). See old monitors.conf notes;
+-- connector names/modes verified via `hyprctl monitors`.
+--
+-- The arrangement itself (which output is main, what sits left and right of it,
+-- what mirrors it) is NOT written here any more. It lives in
+-- display-layout.json and is compiled to display-layout.gen.lua by
+-- `hypr-display`, which the Quickshell drawer's Display pane drives. That is
+-- what makes a change from the drawer survive a reload: the generated file is
+-- read on every parse, exactly as if these lines had been edited by hand.
+--
+-- The catch-all comes first so a rule below can still override it, and so an
+-- output nobody has placed yet still lights up.
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
+
+-- pcall, so a generated file that is missing or broken falls back to the
+-- hardcoded desktop layout instead of taking the whole config down with it.
+local layoutOk = pcall(dofile, os.getenv("HOME") .. "/.config/hypr/display-layout.gen.lua")
+if not layoutOk then
+    hl.monitor({ output = "DP-1",     mode = "highrr",         position = "0x0",    scale = 1 }) -- MSI MAG 275QF, 2560x1440 @ max (165/180, not 170)
+    hl.monitor({ output = "HDMI-A-1", mode = "1920x1080@100",  position = "2560x0", scale = 1 }) -- 27B1H2, 1080p secondary
+end
 
 ---------------------
 ---- MY PROGRAMS ----
@@ -209,8 +225,12 @@ hl.device({ name = "epic-mouse-v1", sensitivity = -0.5 })
 --------------------------------
 ---- MONITOR WORKSPACE BINDS ----
 --------------------------------
--- Per-monitor workspaces: DP-1 gets IDs 1-10, HDMI-A-1 gets IDs 11-20.
--- ws-switch/ws-move scripts map Mod+1-0 to the focused monitor's range.
+-- Blocks of ten per monitor, but WHICH block a monitor gets follows the
+-- arrangement, not the connector: main owns 1-10, the monitor to its right
+-- 11-20, and so on. display-layout.gen.lua emits those rules, so these are only
+-- the fallback for when it is missing. ws-switch/ws-move/ws-cycle read the same
+-- blocks out of display-workspaces.json to map Mod+1-0 to the focused monitor.
+if not layoutOk then
 hl.workspace_rule({ workspace = "1",  monitor = "DP-1", default = true })
 hl.workspace_rule({ workspace = "2",  monitor = "DP-1" })
 hl.workspace_rule({ workspace = "3",  monitor = "DP-1" })
@@ -231,6 +251,7 @@ hl.workspace_rule({ workspace = "17", monitor = "HDMI-A-1" })
 hl.workspace_rule({ workspace = "18", monitor = "HDMI-A-1" })
 hl.workspace_rule({ workspace = "19", monitor = "HDMI-A-1" })
 hl.workspace_rule({ workspace = "20", monitor = "HDMI-A-1" })
+end
 
 ---------------------
 ---- KEYBINDINGS ----
