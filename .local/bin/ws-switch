@@ -1,19 +1,18 @@
 #!/bin/bash
 # Switch to the Nth workspace (1-10) on the currently focused monitor.
-# DP-1 maps to workspace IDs 1-10, HDMI-A-1 maps to IDs 11-20.
-# Workspaces on HDMI-A-1 are renamed to "1"-"10" for display.
+# Which block of ten that monitor owns follows the arrangement, not its
+# connector name: the main (centre) monitor owns 1-10, the one to its right
+# 11-20, and so on. `hypr-display focused` reports the block for whichever
+# monitor has focus, so this keeps working after the Display pane moves
+# something. Workspaces outside the first block are renamed to "1"-"10" so the
+# waybar reads the same on every monitor.
 
 N=$1
-MONITOR=$(hyprctl monitors -j | python3 -c "import json,sys; print(next(m['name'] for m in json.load(sys.stdin) if m['focused']))")
-
-case "$MONITOR" in
-    DP-1)       WS=$N ;;
-    HDMI-A-1)   WS=$((N + 10)) ;;
-    *)          WS=$N ;;
-esac
+read -r MONITOR BASE < <(/home/suji/.local/bin/hypr-display focused)
+WS=$((BASE + N))
 
 hyprctl dispatch "hl.dsp.focus({ workspace = $WS })"
 
-if [ "$MONITOR" = "HDMI-A-1" ] && [ "$WS" -gt 10 ]; then
+if [ "$BASE" -gt 0 ]; then
     hyprctl dispatch "hl.dsp.workspace.rename({ workspace = $WS, name = \"$N\" })" 2>/dev/null
 fi

@@ -1,15 +1,15 @@
 #!/bin/bash
 # Cycle to the next/previous workspace on the focused monitor.
 # Usage: ws-cycle next | ws-cycle prev
+#
+# The monitor's block of ten comes from the live arrangement via
+# `hypr-display focused`, so this follows the Display pane instead of assuming
+# DP-1 owns 1-10.
 
 DIRECTION=$1
-MONITOR=$(hyprctl monitors -j | python3 -c "import json,sys; print(next(m['name'] for m in json.load(sys.stdin) if m['focused']))")
-
-case "$MONITOR" in
-    DP-1)       LO=1;  HI=10 ;;
-    HDMI-A-1)   LO=11; HI=20 ;;
-    *)          LO=1;  HI=10 ;;
-esac
+read -r MONITOR BASE < <(/home/suji/.local/bin/hypr-display focused)
+LO=$((BASE + 1))
+HI=$((BASE + 10))
 
 CURRENT=$(hyprctl activeworkspace -j | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
 
@@ -56,8 +56,8 @@ fi
 TARGET=${IDS[$NEXT_IDX]}
 hyprctl dispatch "hl.dsp.focus({ workspace = $TARGET })"
 
-# Rename for display if on HDMI-A-1
-if [ "$MONITOR" = "HDMI-A-1" ] && [ "$TARGET" -gt 10 ]; then
-    DISPLAY_NUM=$((TARGET - 10))
+# Rename for display, so every monitor's workspaces read 1-10 in the waybar
+if [ "$BASE" -gt 0 ]; then
+    DISPLAY_NUM=$((TARGET - BASE))
     hyprctl dispatch "hl.dsp.workspace.rename({ workspace = $TARGET, name = \"$DISPLAY_NUM\" })" 2>/dev/null
 fi

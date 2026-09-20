@@ -1,20 +1,16 @@
 #!/bin/bash
 # Move the active window to the Nth workspace (1-10) on the focused monitor,
-# then follow it there.
-# DP-1 maps to workspace IDs 1-10, HDMI-A-1 maps to IDs 11-20.
+# then follow it there. Block selection works exactly as in ws-switch: it comes
+# from the live arrangement via `hypr-display focused`, never from a hardcoded
+# connector name.
 
 N=$1
-MONITOR=$(hyprctl monitors -j | python3 -c "import json,sys; print(next(m['name'] for m in json.load(sys.stdin) if m['focused']))")
-
-case "$MONITOR" in
-    DP-1)       WS=$N ;;
-    HDMI-A-1)   WS=$((N + 10)) ;;
-    *)          WS=$N ;;
-esac
+read -r MONITOR BASE < <(/home/suji/.local/bin/hypr-display focused)
+WS=$((BASE + N))
 
 hyprctl dispatch "hl.dsp.window.move({ workspace = $WS, follow = false })"
 hyprctl dispatch "hl.dsp.focus({ workspace = $WS })"
 
-if [ "$MONITOR" = "HDMI-A-1" ] && [ "$WS" -gt 10 ]; then
+if [ "$BASE" -gt 0 ]; then
     hyprctl dispatch "hl.dsp.workspace.rename({ workspace = $WS, name = \"$N\" })" 2>/dev/null
 fi
