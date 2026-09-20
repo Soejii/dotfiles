@@ -1,0 +1,6 @@
+interface:
+  display_name: "Academic Explainer"
+  short_description: "Understand assignments, chapters, papers, and concepts"
+  default_prompt: "Use $academic-explainer to explain this academic material so I understand what it is really about."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Peer review"
+  short_description: "Review a diff when explicitly requested"
+  default_prompt: "Use $peer-review to review this change before I commit it."
+
+policy:
+  allow_implicit_invocation: false
