@@ -24,12 +24,12 @@ Read each selected reference completely. Do not load the external-review procedu
 - Run the global `grilling` skill at document level and again before every section. If it is unavailable, stop and explain that the mandatory decision gate cannot run.
 - Ask one decision at a time. Investigate discoverable facts yourself.
 - Write or revise only the named, authorized section. Adjacent sections may be read for context but remain unchanged unless Suji explicitly authorizes them.
-- Create section working files automatically. Maintain one canonical, complete final Markdown file for the assignment.
+- Create one assignment-named folder under `working/` and keep every section working file and review artifact for that assignment inside it. Maintain one canonical, complete final Markdown file outside that folder.
 - Treat model memory and search results as discovery aids, never as evidence.
 - Use Hound MCP for independent web research. Inspect the exact source before using a substantive claim.
 - If the exact source is inaccessible, ask Suji to obtain it. Replace, narrow, or omit the claim until the source can be inspected.
-- Apply explicit assignment or institutional citation rules first; use APA 7 only when none are specified.
-- Never use em dashes in generated prose or skill-created assignment files.
+- Apply explicit assignment or institutional citation rules first. Use APA 7 only when none are specified.
+- Never use semicolons or em dashes in generated prose or skill-created assignment files. Rewrite the sentence with a suitable conjunction or split it into complete sentences. Do not merely delete punctuation or replace it with a comma.
 - Review formulaic prose through concrete editorial findings. Never use an AI detector score or a generic humanizer.
 - Run external review only on the assembled assignment. Suji chooses the exact Claude or Codex model and effort. Never substitute a model silently.
 
@@ -37,7 +37,7 @@ Read each selected reference completely. Do not load the external-review procedu
 
 - **Write:** research and draft a new authorized section.
 - **Revise:** diagnose an existing authorized section, grill the unresolved decisions, then edit only what Suji approves.
-- **Review:** send a complete draft to a fresh-context headless reviewer. The reviewer returns findings only; revisions remain section-gated.
+- **Review:** send a complete draft to a fresh-context headless reviewer. The reviewer returns findings only. Revisions remain section-gated.
 
 When invocation arguments do not make the mode or target section clear, inspect the assignment folder first, then resolve the remaining decision through grilling.
 

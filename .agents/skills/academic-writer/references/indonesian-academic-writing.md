@@ -48,13 +48,13 @@ Use headings only when the reader benefits from a genuine change of topic, level
 
 Introductions vary by assignment. Possible functions include:
 
-- orienting the reader to the problem;
-- defining a contested or necessary concept;
-- establishing the practical or theoretical situation;
-- synthesizing what relevant research establishes;
-- identifying a limitation, tension, inconsistency, or unanswered question;
-- justifying why the present discussion is needed;
-- narrowing the scope;
+- orienting the reader to the problem.
+- defining a contested or necessary concept.
+- establishing the practical or theoretical situation.
+- synthesizing what relevant research establishes.
+- identifying a limitation, tension, inconsistency, or unanswered question.
+- justifying why the present discussion is needed.
+- narrowing the scope.
 - stating the purpose, question, or position.
 
 These are possible moves, not a mandatory checklist. Indonesian rhetorical research using the Problem Justifying Project model found variation in which moves appeared. The UM guide likewise distinguishes a makalah introduction from a research-article introduction. Determine the required work from the actual assignment and researched convention.
@@ -82,22 +82,22 @@ Prioritize a visible subject-predicate relationship and keep modifiers close to 
 
 During revision, check for:
 
-- missing or competing subjects;
-- stacked clauses without a clear hierarchy;
-- `di mana` used as a general relative connector instead of a place expression;
-- incorrect separation of the prefix `di-` and the preposition `di`;
-- redundant pairs such as `adalah merupakan`;
-- repeated plural marking when one marker is sufficient;
-- foreign terms used when an established Indonesian term is clearer;
-- unexplained technical terms;
-- excessive passive constructions that hide the actor when the actor matters;
-- first-person references that displace attention from the object of discussion;
-- conversational appeals such as `seperti kita ketahui bersama`;
+- missing or competing subjects.
+- stacked clauses without a clear hierarchy.
+- `di mana` used as a general relative connector instead of a place expression.
+- incorrect separation of the prefix `di-` and the preposition `di`.
+- redundant pairs such as `adalah merupakan`.
+- repeated plural marking when one marker is sufficient.
+- foreign terms used when an established Indonesian term is clearer.
+- unexplained technical terms.
+- excessive passive constructions that hide the actor when the actor matters.
+- first-person references that displace attention from the object of discussion.
+- conversational appeals such as `seperti kita ketahui bersama`.
 - words or sentences that add length but no information.
 
 Use KBBI for standard forms, an authoritative disciplinary glossary for technical terms, and EYD V for spelling and punctuation. Italicize an unabsorbed foreign term when the controlling style requires it. Maintain one term for one concept unless a distinction is intentional.
 
-Never use an em dash. Use commas, semicolons, colons, parentheses, or separate sentences according to the actual relation.
+Never use semicolons or em dashes. Express the relationship with a suitable conjunction, a colon, parentheses, or separate complete sentences. Rewrite the wording where needed to preserve the meaning and grammatical flow. Do not simply delete punctuation or create a comma splice. Check the finished prose for both prohibited punctuation marks.
 
 ## Preserve a natural academic texture
 
@@ -105,11 +105,11 @@ Do not imitate Suji's previous writing or a group member's prose. Naturalness co
 
 Prefer:
 
-- specific claims over polished generalities;
-- evidence-driven asymmetry over matching paragraph shapes;
-- interpretation that takes a defensible position;
-- transitions that name the real relationship;
-- selective explanation based on reader need;
+- specific claims over polished generalities.
+- evidence-driven asymmetry over matching paragraph shapes.
+- interpretation that takes a defensible position.
+- transitions that name the real relationship.
+- selective explanation based on reader need.
 - meaningful variation caused by different paragraph functions.
 
 ## Formulaic-prose audit

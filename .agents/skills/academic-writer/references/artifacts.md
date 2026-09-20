@@ -13,11 +13,15 @@ Create these files automatically. Do not ask whether a working file is wanted.
 Use the assignment's existing naming convention when one is clear. Otherwise use:
 
 ```text
-working/<Section Name>.working.md
 <Assignment Name>.md
+working/
+  <Assignment Name>/
+    <Section Name>.working.md
 ```
 
-For a single-section task, `working/<Assignment Name>.working.md` is sufficient. For a multi-section task, create a separate working file from the beginning for each section Suji owns. If an initially small working file becomes difficult to navigate, state the concern and recommend a split before moving its contents. Never split the canonical final file.
+The shared `working/` directory contains assignment folders, never loose assignment artifacts. For a single-section task, use `working/<Assignment Name>/<Assignment Name>.working.md`. For a multi-section task, create a separate working file inside `working/<Assignment Name>/` from the beginning for each section Suji owns. Store review prompts, findings, run logs, research notes, and other non-canonical artifacts for that assignment in the same assignment folder. If an initially small working file becomes difficult to navigate, state the concern and recommend a split before moving its contents. Never split the canonical final file.
+
+Keep the canonical assignment and ordinary lecture notes directly in their established course or topic folder. Do not create an assignment-named wrapper folder for either of them.
 
 Do not create duplicate final files such as `final-v2.md`, `final-revised.md`, or `really-final.md`. Revision history belongs in Git or the working files. A required non-Markdown submission is derived from the canonical final Markdown file and does not replace it.
 
@@ -72,12 +76,12 @@ Do not use a candidate or `needs-user-copy` entry in final prose.
 
 The final Markdown file contains only material intended for submission:
 
-- assignment identity required by the lecturer;
-- accepted title and section structure;
-- accepted prose;
-- tables, figures, and captions;
-- in-text citations;
-- one reconciled reference list;
+- assignment identity required by the lecturer.
+- accepted title and section structure.
+- accepted prose.
+- tables, figures, and captions.
+- in-text citations.
+- one reconciled reference list.
 - required appendices.
 
 Do not leak source-ledger notes, reviewer findings, search notes, drafting instructions, uncertainty markers, or internal status labels into the final file.

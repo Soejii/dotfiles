@@ -28,7 +28,7 @@ Treat Downloads as an inbox. Move a retained assignment source into the assignme
 /home/suji/.local/bin/pdf-text-cache --rename-to 'Title - (In-text citation, Year)' <file.pdf>
 ```
 
-Use `&` for two authors and `FirstAuthor et al.` for three or more. Replace `/` in a title with `-` because it cannot appear in a Linux filename. Do not derive citation identity from an unverified download filename. Record the renamed PDF as the source access path in the ledger; the cached Markdown is a reading aid, not the cited source.
+Use `&` for two authors and `FirstAuthor et al.` for three or more. Replace `/` in a title with `-` because it cannot appear in a Linux filename. Do not derive citation identity from an unverified download filename. Record the renamed PDF as the source access path in the ledger. The cached Markdown is a reading aid, not the cited source.
 
 ### 2. Define the evidence gap
 
@@ -62,12 +62,12 @@ Never reconstruct a result from memory or imply that an abstract supports a deta
 
 For every planned substantive claim, record:
 
-- the exact proposition the prose will make;
-- complete source identity;
-- a concise account of the actual supporting passage or result;
-- an exact locator;
-- whether the source is primary, secondary, or institutional;
-- whether the planned use is quotation, paraphrase, synthesis, definition, or data;
+- the exact proposition the prose will make.
+- complete source identity.
+- a concise account of the actual supporting passage or result.
+- an exact locator.
+- whether the source is primary, secondary, or institutional.
+- whether the planned use is quotation, paraphrase, synthesis, definition, or data.
 - verification status.
 
 Verification asks:
@@ -92,7 +92,7 @@ Select sources by fitness for the claim, not by a universal prestige ladder.
 - Use scholarly books for established theory and disciplinary explanation.
 - Use course material when the assignment explicitly depends on the lecturer's framing.
 
-Blogs and unsourced summaries may suggest search terms but normally do not enter the academic evidence base. Recency matters when the claim can change; age alone does not invalidate a foundational source.
+Blogs and unsourced summaries may suggest search terms but normally do not enter the academic evidence base. Recency matters when the claim can change. Age alone does not invalidate a foundational source.
 
 ## Quotation and paraphrase
 
@@ -106,11 +106,11 @@ The assignment, lecturer, journal, or institutional style overrides all defaults
 
 Before accepting a section:
 
-- every in-text citation resolves to one reference-list entry;
-- every reference-list entry is cited in the text unless the required style explicitly allows a bibliography;
-- author names, year, title, container, volume, issue, pages, DOI, and URL match the inspected source;
-- page or paragraph locators are present where required;
-- the cited source supports the exact sentence beside it;
+- every in-text citation resolves to one reference-list entry.
+- every reference-list entry is cited in the text unless the required style explicitly allows a bibliography.
+- author names, year, title, container, volume, issue, pages, DOI, and URL match the inspected source.
+- page or paragraph locators are present where required.
+- the cited source supports the exact sentence beside it.
 - citations copied from another source have been checked against the original before use.
 
 Formatting correctness never compensates for unsupported content.

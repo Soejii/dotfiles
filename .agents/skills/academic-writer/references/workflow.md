@@ -13,14 +13,14 @@ Separate facts from decisions:
 
 Load and follow the global `grilling` skill. Resolve the complete document's purpose before drafting any prose. At minimum, establish:
 
-- the actual task and assessment criteria;
-- the academic context, audience, and expected Indonesian register;
-- the type of document, without forcing it into an unsupported genre template;
-- the central question, position, or research purpose;
-- the boundaries of the argument and what will not be covered;
-- the available evidence and known evidence gaps;
-- the document map and ownership of each section;
-- explicit formatting and citation requirements;
+- the actual task and assessment criteria.
+- the academic context, audience, and expected Indonesian register.
+- the type of document, without forcing it into an unsupported genre template.
+- the central question, position, or research purpose.
+- the boundaries of the argument and what will not be covered.
+- the available evidence and known evidence gaps.
+- the document map and ownership of each section.
+- explicit formatting and citation requirements.
 - which section Suji authorizes first.
 
 Ask one question at a time. Attach a recommendation and its strongest counterargument. Continue until Suji confirms the shared understanding. Record the confirmed decisions in the relevant working file.
@@ -37,12 +37,12 @@ Build a document map in the working material. The map provides document-level co
 
 Before every new or reopened section, run `grilling` again. Establish a section contract containing:
 
-- the section's exact rhetorical job;
-- the claim, question, or progression it must develop;
-- what the reader should understand when the section ends;
-- evidence required for each substantive move;
-- its relationship to the preceding and following sections;
-- the authorized boundary, including paragraphs or subsections that remain read-only;
+- the section's exact rhetorical job.
+- the claim, question, or progression it must develop.
+- what the reader should understand when the section ends.
+- evidence required for each substantive move.
+- its relationship to the preceding and following sections.
+- the authorized boundary, including paragraphs or subsections that remain read-only.
 - a stopping condition based on completed rhetorical work, not page count.
 
 Even when document-level grilling appears to settle the section, run this gate. It may be short, but Suji must confirm it before prose is drafted or revised.
@@ -53,10 +53,10 @@ Read [sources-and-evidence.md](sources-and-evidence.md). Inventory local evidenc
 
 Plan by argumentative function, not by a target number of paragraphs. A useful plan accounts for:
 
-- the claim or question each passage advances;
-- the evidence used and what that evidence actually permits;
-- the writer's interpretation of the evidence;
-- qualifications, tensions, or counterpositions that matter;
+- the claim or question each passage advances.
+- the evidence used and what that evidence actually permits.
+- the writer's interpretation of the evidence.
+- qualifications, tensions, or counterpositions that matter.
 - the logical handoff to the next passage.
 
 Do not confuse an outline with the finished structure. Change the plan when the evidence or reasoning demands it, and record consequential changes in the working file.
@@ -71,13 +71,13 @@ For group assignments, inspect adjacent text to understand the boundary. Build c
 
 Audit the section in separate passes:
 
-1. **Argument:** every paragraph advances the section contract; no conclusion exceeds its premises.
-2. **Evidence:** every substantive claim has exact support in the ledger; qualification matches the source.
+1. **Argument:** every paragraph advances the section contract. No conclusion exceeds its premises.
+2. **Evidence:** every substantive claim has exact support in the ledger. Qualification matches the source.
 3. **Organization:** headings and paragraph breaks reflect real changes in function.
 4. **Paragraphs:** each paragraph has a controlling purpose and develops it rather than restating it.
 5. **Language:** Indonesian is logical, direct, clear, economical, formal, and precise.
 6. **Formulaic prose:** identify exact repetitive shapes, empty transitions, forced symmetry, generic claims, or unnecessary summaries.
-7. **Mechanics:** terminology, citations, references, punctuation, and the zero em dash rule are correct.
+7. **Mechanics:** terminology, citations, references, punctuation, and the prohibition on semicolons and em dashes are correct.
 
 Present material uncertainties and meaningful alternatives to Suji. Do not turn trivial copyediting into another decision gate.
 
