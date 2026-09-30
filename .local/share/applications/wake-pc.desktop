@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Wake PC
+Comment=Wake the desktop from suspend via the phone
+Exec=/home/suji/.local/bin/wake-pc
+Icon=system-reboot
+Terminal=false
+Categories=Network;

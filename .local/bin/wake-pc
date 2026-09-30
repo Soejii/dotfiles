@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# wake-pc: wake the desktop (suji-2) from suspend via the Redmi 10's magic packet.
+# Launched from wofi, so it reports through notifications instead of a terminal.
+PHONE=100.100.188.35
+DESKTOP=100.112.50.57
+
+up() { /usr/bin/tailscale ping -c 1 --timeout 2s "$DESKTOP" >/dev/null 2>&1; }
+note() { /usr/bin/notify-send -a "Wake PC" "$@"; }
+
+if up; then note "PC is already awake"; exit 0; fi
+
+note "Waking PC..."
+if ! /usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=10 -p 8022 "$PHONE" 'python ~/wol-desktop.py' >/dev/null 2>&1; then
+    note -u critical "Wake failed" "Could not reach the phone ($PHONE)"; exit 1
+fi
+for _ in $(seq 60); do up && { note "PC is awake"; exit 0; }; sleep 3; done
+note -u critical "Wake failed" "PC did not come back within 3 min"; exit 1
