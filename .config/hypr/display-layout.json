@@ -18,6 +18,16 @@
         1920,
         1080
       ]
+    },
+    "PHONE": {
+      "mode": "2400x1080@90",
+      "scale": 1.5,
+      "standby": true,
+      "size": [
+        1600,
+        720
+      ],
+      "label": "Redmi 10 (Moonlight)"
     }
   },
   "place": {
@@ -25,6 +35,11 @@
       "side": "right",
       "align": "start",
       "of": "DP-1"
+    },
+    "PHONE": {
+      "side": "below",
+      "align": "center",
+      "of": "HDMI-A-1"
     }
   }
 }

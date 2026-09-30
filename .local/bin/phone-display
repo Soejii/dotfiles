@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# phone-display: the Redmi 10 as a side monitor, via Sunshine + Moonlight.
+#
+# Sunshine (~/.config/sunshine) runs this around every Moonlight session
+# (prep-cmd in apps.json), so the PHONE output only exists while the phone is
+# actually streaming: open Moonlight -> "Phone display" and it appears, back out
+# and it is gone, like plugging a monitor in and out. Its mode/scale rule lives
+# in hyprland.lua, and waybar skips it ("!PHONE").
+#
+#   phone-display up       create the headless PHONE output (no-op if present)
+#   phone-display down     remove it; Hyprland moves its windows elsewhere
+#   phone-display status
+set -euo pipefail
+
+OUT=PHONE
+
+have_output() { hyprctl monitors -j | grep -q "\"name\": \"$OUT\""; }
+
+case ${1:-status} in
+    up)     have_output || hyprctl output create headless "$OUT" >/dev/null ;;
+    down)   ! have_output || hyprctl output remove "$OUT" >/dev/null ;;
+    status) have_output && echo "PHONE output present" || echo "PHONE output absent" ;;
+    *)      echo "usage: phone-display up | down | status" >&2; exit 2 ;;
+esac

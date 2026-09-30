@@ -28,6 +28,11 @@ if not layoutOk then
     hl.monitor({ output = "HDMI-A-1", mode = "1920x1080@100",  position = "2560x0", scale = 1 }) -- 27B1H2, 1080p secondary
 end
 
+-- The Redmi 10's headless PHONE output (Moonlight via Sunshine) is placed by
+-- hypr-display like any other monitor: it is a "standby" entry in
+-- display-layout.json, so its position (below HDMI-A-1), mode, scale 1.5 and
+-- workspaces 21-30 stay reserved while it is absent. Waybar skips it.
+
 ---------------------
 ---- MY PROGRAMS ----
 ---------------------
@@ -52,6 +57,9 @@ hl.on("hyprland.start", function()
     -- Control drawer. Supervised because its death is silent: the waybar
     -- power glyph would simply stop responding with no other symptom.
     hl.exec_cmd("systemctl --user start quickshell.service")
+    -- Sunshine streams the PHONE output to Moonlight on the Redmi 10. Started
+    -- here because graphical-session.target is never reached in this session.
+    hl.exec_cmd("systemctl --user start app-dev.lizardbyte.app.Sunshine.service")
     -- Adopts never-seen monitors into display-layout.json as they are plugged
     -- in. restart, not start: it must pick up this session's Hyprland socket.
     hl.exec_cmd("systemctl --user restart hypr-display-hotplug.service")

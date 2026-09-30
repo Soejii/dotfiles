@@ -1,0 +1,17 @@
+{
+  "env": {
+    "PATH": "$(PATH):$(HOME)/.local/bin"
+  },
+  "apps": [
+    {
+      "name": "Phone display",
+      "image-path": "desktop.png",
+      "prep-cmd": [
+        {
+          "do": "/home/suji/.local/bin/phone-display up",
+          "undo": "/home/suji/.local/bin/phone-display down"
+        }
+      ]
+    }
+  ]
+}
