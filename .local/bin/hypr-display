@@ -43,6 +43,9 @@ Usage:
   hypr-display set <output> <slot>    slot: main | mirror | extend | left | right
   hypr-display apply                  recompile and reload, changing nothing
   hypr-display focused                "<monitor> <workspace base>", for ws-*
+  hypr-display events                 print a line per monitor add/remove, forever
+  hypr-display hotplug                adopt never-seen monitors as they appear
+  hypr-display set <output> forget    drop a disconnected monitor from the layout
 """
 
 import fcntl
@@ -50,6 +53,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -69,7 +73,7 @@ HYPRCTL = shutil.which("hyprctl") or "/usr/bin/hyprctl"
 # this first, so a weird EDID-derived name can never break out of its quotes.
 SAFE = re.compile(r"^[A-Za-z0-9@._:+-]+$")
 
-SLOTS = ("main", "mirror", "extend", "left", "right")
+SLOTS = ("main", "mirror", "extend", "left", "right", "forget")
 SIDES = ("right", "left", "below", "above")
 
 # Two monitors must share at least this much edge to count as attached, so the
@@ -968,6 +972,16 @@ def cmd_set(name, slot):
             layout["mirrors"].append(name)
     elif slot == "extend":
         layout["mirrors"] = [n for n in layout["mirrors"] if n != name]
+    elif slot == "forget":
+        if usable(live, name):
+            die(f"{name} is connected; only a disconnected monitor can be forgotten")
+        layout["monitors"].pop(name, None)
+        layout["mirrors"] = [n for n in layout["mirrors"] if n != name]
+        # Anything attached to it inherits its anchor, so nothing is orphaned.
+        mine = layout["place"].pop(name, None)
+        for rel in layout["place"].values():
+            if rel.get("of") == name:
+                rel["of"] = (mine or {}).get("of", layout["main"])
     else:                                   # left / right of main, top-aligned
         if name == layout["main"]:
             die("the main monitor cannot sit beside itself")
@@ -1065,6 +1079,60 @@ def state(layout, live):
     return {"main": main, "monitors": rows}
 
 
+def monitor_events():
+    """Yield (event, output name) for every monitor add/remove, straight from
+    Hyprland's event socket. Ends (so a supervisor restarts us) if Hyprland goes."""
+    sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
+    run = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect(os.path.join(run, "hypr", sig, ".socket2.sock"))
+    buf = b""
+    while True:
+        data = sock.recv(4096)
+        if not data:
+            return
+        buf += data
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            event, _, arg = line.decode(errors="replace").partition(">>")
+            if event in ("monitoradded", "monitorremoved"):
+                yield event, arg.strip()
+
+
+def cmd_events():
+    for event, name in monitor_events():
+        print(f"{event} {name}", flush=True)
+
+
+def cmd_hotplug():
+    """Adopt a monitor the layout has never seen: give it a place, a workspace
+    block and a saved entry, so Mod+1..0 works on it before anyone opens the
+    pane. Known monitors are left alone, which matters: outputs drop and return
+    on every DPMS cycle, and the phone comes and goes with every stream."""
+    for event, name in monitor_events():
+        if event != "monitoradded" or not SAFE.match(name):
+            continue
+        try:
+            with open(LAYOUT) as fh:
+                known = json.load(fh).get("monitors", {})
+        except (OSError, json.JSONDecodeError):
+            known = {}
+        if name in known:
+            continue
+        time.sleep(1.0)                     # let its mode settle before sizing it
+
+        def adopt():
+            live = live_monitors()
+            if not usable(live, name):
+                return
+            layout = load_layout(live)
+            save_layout(layout)
+            apply(layout, live, force=True)
+        with_lock(adopt)
+        print(f"adopted {name}", flush=True)
+    sys.exit(1)        # the socket closed: Hyprland went away; let systemd retry
+
+
 def cmd_focused():
     """Print "<monitor> <base>" for the focused output, for ws-switch, ws-move
     and ws-cycle. Deliberately lean -- one hyprctl call and a file read, no
@@ -1118,8 +1186,12 @@ def main():
         with_lock(cmd_apply)
     elif args[0] == "set":
         if len(args) != 3:
-            die("usage: hypr-display set <output> <main|mirror|extend|left|right>")
+            die("usage: hypr-display set <output> <main|mirror|extend|left|right|forget>")
         with_lock(lambda: cmd_set(args[1], args[2]))
+    elif args[0] == "events":
+        cmd_events()
+    elif args[0] == "hotplug":
+        cmd_hotplug()
     elif args[0] == "move":
         if len(args) != 4:
             die("usage: hypr-display move <output> <x> <y>")

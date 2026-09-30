@@ -1,0 +1,8 @@
+[Unit]
+Description=Adopt newly plugged monitors into the hypr-display layout
+# Only never-seen outputs trigger anything; see `hypr-display hotplug`.
+
+[Service]
+ExecStart=/home/suji/.local/bin/hypr-display hotplug
+Restart=on-failure
+RestartSec=2

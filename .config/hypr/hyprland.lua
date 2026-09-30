@@ -52,6 +52,9 @@ hl.on("hyprland.start", function()
     -- Control drawer. Supervised because its death is silent: the waybar
     -- power glyph would simply stop responding with no other symptom.
     hl.exec_cmd("systemctl --user start quickshell.service")
+    -- Adopts never-seen monitors into display-layout.json as they are plugged
+    -- in. restart, not start: it must pick up this session's Hyprland socket.
+    hl.exec_cmd("systemctl --user restart hypr-display-hotplug.service")
     hl.exec_cmd("wl-paste --type text --watch cliphist store")
     hl.exec_cmd("wl-paste --type image --watch cliphist store")
     hl.exec_cmd("blueman-applet")
