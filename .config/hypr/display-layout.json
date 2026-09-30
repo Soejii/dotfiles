@@ -1,19 +1,30 @@
 {
-  "version": 1,
+  "version": 2,
   "main": "DP-1",
-  "order": [
-    "DP-1",
-    "HDMI-A-1"
-  ],
   "mirrors": [],
   "monitors": {
     "DP-1": {
       "mode": "highrr",
-      "scale": 1
+      "scale": 1,
+      "size": [
+        2560,
+        1440
+      ]
     },
     "HDMI-A-1": {
       "mode": "1920x1080@100",
-      "scale": 1
+      "scale": 1,
+      "size": [
+        1920,
+        1080
+      ]
+    }
+  },
+  "place": {
+    "HDMI-A-1": {
+      "side": "right",
+      "align": "start",
+      "of": "DP-1"
     }
   }
 }

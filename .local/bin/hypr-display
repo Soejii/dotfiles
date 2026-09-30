@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Owns the Hyprland monitor arrangement: which output is main (the one in
-front of you), what sits to its left and right, and which ones mirror it.
+front of you), where every other output sits around it in 2D, and which ones
+mirror main.
 
 The arrangement lives in display-layout.json and is compiled to
 display-layout.gen.lua, which hyprland.lua dofiles. That is the whole point of
@@ -9,6 +10,21 @@ the generated file: a change made here IS the config, so it survives
 hand. Monitor modes are deliberately NOT managed here; edit the "mode" field in
 display-layout.json if a refresh rate ever needs changing.
 
+Placement is RELATIVE (layout v2): every monitor except main records which
+neighbour it is attached to, on which side, and how it is aligned along that
+edge, e.g. {"of": "HDMI-A-1", "side": "below", "align": "center"}. Relative, not
+absolute, so a layout survives a monitor changing resolution or being
+unplugged: anything attached to an absent monitor re-attaches, same side, to
+that monitor's own anchor. The Display pane drags a monitor to an absolute drop
+point; `move` snaps it to the nearest free edge and re-derives the whole tree
+from the resulting geometry, which is also why the tree can never contain a
+cycle.
+
+A monitor marked "standby" in the layout (the Redmi's headless PHONE output,
+which only exists while Moonlight streams it) is planned even while it is
+absent: its position and workspace block stay reserved, so it can appear and
+disappear without a config apply and without renumbering anyone else.
+
 Mirroring an output takes its block of ten away, so its workspaces are folded
 onto the end of main's block and remembered in display-merged.json; un-mirroring
 reads that back and puts them where they were. The record is the whole trick:
@@ -16,13 +32,15 @@ the moment a workspace is folded in, nothing in Hyprland's own state still says
 which monitor produced it.
 
 Workspace ranges follow the arrangement, never the connector name: main owns
-1-10, the next monitor to its right 11-20, then further right, then leftwards
-from main. Those bases are written to display-workspaces.json, which ws-switch,
-ws-move and ws-cycle read so Mod+1..0 keeps meaning "this monitor's block".
+1-10, then the monitors in main's row from the right of it outwards, then the
+ones on its left, then everything above or below, top to bottom. Those bases are
+written to display-workspaces.json, which ws-switch, ws-move and ws-cycle read
+so Mod+1..0 keeps meaning "this monitor's block".
 
 Usage:
   hypr-display state                  JSON for the drawer's Display pane
-  hypr-display set <output> <slot>    slot: main | left | right | mirror
+  hypr-display move <output> <x> <y>  drop a monitor at a logical point; snaps
+  hypr-display set <output> <slot>    slot: main | mirror | extend | left | right
   hypr-display apply                  recompile and reload, changing nothing
   hypr-display focused                "<monitor> <workspace base>", for ws-*
 """
@@ -51,7 +69,16 @@ HYPRCTL = shutil.which("hyprctl") or "/usr/bin/hyprctl"
 # this first, so a weird EDID-derived name can never break out of its quotes.
 SAFE = re.compile(r"^[A-Za-z0-9@._:+-]+$")
 
-SLOTS = ("main", "left", "right", "mirror")
+SLOTS = ("main", "mirror", "extend", "left", "right")
+SIDES = ("right", "left", "below", "above")
+
+# Two monitors must share at least this much edge to count as attached, so the
+# cursor always has a real doorway between them rather than a corner.
+MIN_SHARED = 64
+# How close (as a fraction of the shorter edge) a drop has to land to a start,
+# centre or end alignment, or to another monitor's edge, before it snaps to it.
+# Generous on purpose: in the pane one screen pixel is ~16 logical ones.
+SNAP = 0.25
 
 
 def trace(label):
@@ -163,6 +190,7 @@ def live_monitors():
             "logicalWidth": int(round(w / scale)),
             "logicalHeight": int(round(h / scale)),
             "x": int(m.get("x") or 0),
+            "y": int(m.get("y") or 0),
             "disabled": bool(m.get("disabled")),
             "mirrorOf": (m.get("mirrorOf") or "none"),
         }
@@ -186,37 +214,64 @@ def load_layout(live):
             layout = json.load(fh)
     except (OSError, json.JSONDecodeError):
         layout = {}
-    layout.setdefault("version", 1)
     layout.setdefault("monitors", {})
     layout.setdefault("mirrors", [])
-    layout.setdefault("order", [])
+    layout.setdefault("place", {})
+    if "order" in layout:
+        layout = migrate_v1(layout, live)
+    layout["version"] = 2
     return normalise(layout, live)
 
 
+def migrate_v1(layout, live):
+    """v1 kept one left-to-right row at y = 0. Rebuild exactly that geometry and
+    derive v2's relative placements from it, so the first run looks identical."""
+    order = [n for n in layout.pop("order") if n not in layout["mirrors"]]
+    geom, x = {}, 0
+    for name in order:
+        if usable(live, name):
+            w, h = live[name]["logicalWidth"], live[name]["logicalHeight"]
+            geom[name] = (x, 0, w, h)
+            x += w
+    main = layout.get("main")
+    root = main if main in geom else next(iter(geom), None)
+    if root:
+        layout["place"].update(derive_places(geom, root))
+    # Offline ones keep their spot in the chain: right of whoever preceded them.
+    for i, name in enumerate(order):
+        if name not in geom and name != root:
+            prev = order[i - 1] if i else root
+            if prev and prev != name:
+                layout["place"][name] = {"of": prev, "side": "right", "align": "start"}
+    return layout
+
+
 def normalise(layout, live):
-    """Fold in anything newly plugged in, drop contradictions, and guarantee
-    exactly one main monitor that is actually able to show something."""
-    order = [n for n in layout["order"] if n not in layout["mirrors"]]
-    seen = set(order) | set(layout["mirrors"])
+    """Fold in anything newly plugged in, drop contradictions, remember each
+    monitor's logical size (a standby monitor is planned from it while absent),
+    and guarantee exactly one main monitor that can actually show something."""
+    mons = layout["monitors"]
+    for name in sorted(live, key=lambda n: live[n]["x"]):
+        if name not in mons:
+            mons[name] = default_entry()
+        if usable(live, name) and not (mons[name].get("standby") and configured_size(mons[name])):
+            mons[name]["size"] = [live[name]["logicalWidth"], live[name]["logicalHeight"]]
 
-    # A monitor Hyprland knows about but the layout does not (first run, or one
-    # just plugged in) joins at the right-hand end, keeping whatever left-to-right
-    # order Hyprland has already given it.
-    order += sorted((n for n in live if n not in seen), key=lambda n: live[n]["x"])
-
-    for name in order + list(layout["mirrors"]):
-        layout["monitors"].setdefault(name, default_entry())
-
-    layout["order"] = order
-    layout["mirrors"] = [n for n in layout["mirrors"] if n in layout["monitors"]]
+    layout["mirrors"] = [n for n in layout["mirrors"] if n in mons]
 
     main = layout.get("main")
-    if main not in order or not usable(live, main):
-        live_order = [n for n in order if usable(live, n)]
-        main = live_order[0] if live_order else (order[0] if order else None)
+    if main not in mons or not usable(live, main) or main in layout["mirrors"]:
+        candidates = [n for n in mons if usable(live, n) and n not in layout["mirrors"]]
+        main = candidates[0] if candidates else next(iter(mons), None)
     layout["main"] = main
-    # Main can never be a mirror of itself.
     layout["mirrors"] = [n for n in layout["mirrors"] if n != main]
+
+    # A monitor seen for the first time goes to the right of main; the overlap
+    # push in resolve() then walks it out past whatever is already there.
+    for name in mons:
+        if name != main and name not in layout["place"] and main:
+            layout["place"][name] = {"of": main, "side": "right", "align": "start"}
+    layout["place"].pop(main, None)
     return layout
 
 
@@ -232,30 +287,307 @@ def write_atomic(path, text):
 
 
 # ------------------------------------------------------------------ geometry
+# A rect is (x, y, w, h) in logical pixels, which is what Hyprland positions in.
+
+def span_overlap(a0, a1, b0, b1):
+    return min(a1, b1) - max(a0, b0)
+
+
+def rects_overlap(r, q):
+    return (span_overlap(r[0], r[0] + r[2], q[0], q[0] + q[2]) > 0 and
+            span_overlap(r[1], r[1] + r[3], q[1], q[1] + q[3]) > 0)
+
+
+def along(a0, alen, blen, align):
+    """Offset along the shared edge. "align" is start/center/end or a number of
+    pixels from the anchor's start edge."""
+    if align == "end":
+        return a0 + alen - blen
+    if align == "center":
+        return a0 + (alen - blen) // 2
+    if align == "start":
+        return a0
+    try:
+        return a0 + int(align)
+    except (TypeError, ValueError):
+        return a0
+
+
+def attach(anchor, size, side, align):
+    ax, ay, aw, ah = anchor
+    w, h = size
+    if side in ("right", "left"):
+        x = ax + aw if side == "right" else ax - w
+        return (x, along(ay, ah, h, align), w, h)
+    y = ay + ah if side == "below" else ay - h
+    return (along(ax, aw, w, align), y, w, h)
+
+
+def align_name(off, alen, blen):
+    if off == 0:
+        return "start"
+    if off == (alen - blen) // 2:
+        return "center"
+    if off == alen - blen:
+        return "end"
+    return int(off)
+
+
+def relation(anchor, rect):
+    """How `rect` is attached to `anchor`, if it touches one of its edges."""
+    ax, ay, aw, ah = anchor
+    x, y, w, h = rect
+    if span_overlap(y, y + h, ay, ay + ah) > 0:
+        if x == ax + aw:
+            return {"side": "right", "align": align_name(y - ay, ah, h)}
+        if x + w == ax:
+            return {"side": "left", "align": align_name(y - ay, ah, h)}
+    if span_overlap(x, x + w, ax, ax + aw) > 0:
+        if y == ay + ah:
+            return {"side": "below", "align": align_name(x - ax, aw, w)}
+        if y + h == ay:
+            return {"side": "above", "align": align_name(x - ax, aw, w)}
+    return None
+
+
+def loose_relation(anchor, rect):
+    """For a rect that touches nothing: attach it on the side it mostly lies on,
+    keeping at least MIN_SHARED of edge in common. Resolving it closes the gap."""
+    ax, ay, aw, ah = anchor
+    x, y, w, h = rect
+    dx = (x + w / 2) - (ax + aw / 2)
+    dy = (y + h / 2) - (ay + ah / 2)
+    if abs(dx) / (aw + w) >= abs(dy) / (ah + h):
+        side, off, alen, blen = ("right" if dx > 0 else "left"), y - ay, ah, h
+    else:
+        side, off, alen, blen = ("below" if dy > 0 else "above"), x - ax, aw, w
+    shared = min(MIN_SHARED, alen, blen)
+    off = max(shared - blen, min(off, alen - shared))
+    return {"side": side, "align": align_name(off, alen, blen)}
+
+
+def derive_places(geom, root):
+    """Rebuild the relative placement tree from absolute geometry, rooted at
+    `root`. Deterministic, and a tree by construction, so no cycles."""
+    visited, places = [root], {}
+    remaining = [n for n in geom if n != root]
+    while remaining:
+        found = None
+        for n in sorted(remaining, key=lambda n: (geom[n][1], geom[n][0], n)):
+            for a in visited:
+                rel = relation(geom[a], geom[n])
+                if rel:
+                    found = (n, a, rel)
+                    break
+            if found:
+                break
+        if not found:
+            def gap(pair):
+                n, a = pair
+                R, A = geom[n], geom[a]
+                return ((R[0] + R[2] / 2) - (A[0] + A[2] / 2)) ** 2 + \
+                       ((R[1] + R[3] / 2) - (A[1] + A[3] / 2)) ** 2
+            n, a = min(((n, a) for n in remaining for a in visited), key=gap)
+            found = (n, a, loose_relation(geom[a], geom[n]))
+        n, a, rel = found
+        rel["of"] = a
+        places[n] = rel
+        visited.append(n)
+        remaining.remove(n)
+    return places
+
+
+def push_clear(rect, side, geom):
+    """Slide a rect along its attachment direction until it overlaps nothing."""
+    for _ in range(64):
+        hit = next((q for q in geom.values() if rects_overlap(rect, q)), None)
+        if hit is None:
+            break
+        x, y, w, h = rect
+        if side == "right":
+            x = hit[0] + hit[2]
+        elif side == "left":
+            x = hit[0] - w
+        elif side == "below":
+            y = hit[1] + hit[3]
+        else:
+            y = hit[1] - h
+        rect = (x, y, w, h)
+    return rect
+
+
+def configured_size(entry):
+    """Logical size implied by an explicit "WxH@R" mode and the scale, or None.
+    Standby outputs are sized from this rather than from Hyprland, because a
+    freshly created headless output briefly reports a default mode, and planning
+    from that snapshot once put the phone 160px off centre."""
+    m = re.match(r"^(\d+)x(\d+)", str(entry.get("mode") or ""))
+    if not m:
+        return None
+    try:
+        scale = float(entry.get("scale", 1)) or 1.0
+    except (TypeError, ValueError):
+        scale = 1.0
+    return (int(round(int(m.group(1)) / scale)), int(round(int(m.group(2)) / scale)))
+
+
+def planned_sizes(layout, live):
+    """Every output that gets a position: connected, non-mirrored ones, plus
+    standby ones even while absent (sized from the last time they were seen)."""
+    out = {}
+    for name, entry in layout["monitors"].items():
+        if name in layout["mirrors"]:
+            continue
+        if entry.get("standby") and configured_size(entry):
+            out[name] = configured_size(entry)
+        elif usable(live, name):
+            out[name] = (live[name]["logicalWidth"], live[name]["logicalHeight"])
+        elif entry.get("standby") and entry.get("size"):
+            w, h = entry["size"]
+            out[name] = (int(w), int(h))
+    return out
+
+
+def resolve(layout, sizes, root):
+    places = layout["place"]
+    geom = {root: (0, 0) + sizes[root]}
+    pending = [n for n in sizes if n != root]
+
+    def anchor_of(name):
+        rel = places.get(name)
+        if not rel:
+            return None, None
+        a, seen = rel.get("of"), {name}
+        # Attached to something absent or mirrored: re-attach, same side and
+        # alignment, to that monitor's own anchor, and so on up the chain.
+        while a not in sizes and a in places and a not in seen:
+            seen.add(a)
+            a = places[a].get("of")
+        if a not in sizes or a == name:
+            a = root
+        return a, rel
+
+    for _ in range(len(pending) + 1):
+        progressed = False
+        for name in list(pending):
+            a, rel = anchor_of(name)
+            if rel is None or a not in geom:
+                continue
+            side = rel.get("side") if rel.get("side") in SIDES else "right"
+            rect = attach(geom[a], sizes[name], side, rel.get("align", "start"))
+            geom[name] = push_clear(rect, side, geom)
+            pending.remove(name)
+            progressed = True
+        if not progressed:
+            break
+    for name in pending:                      # nothing usable to hang it off
+        right = max(geom.values(), key=lambda r: r[0] + r[2])
+        rect = (right[0] + right[2], right[1]) + sizes[name]
+        geom[name] = push_clear(rect, "right", geom)
+
+    # Top-left of the whole arrangement at 0,0, like the old row layout.
+    mx = min(r[0] for r in geom.values())
+    my = min(r[1] for r in geom.values())
+    return {n: (r[0] - mx, r[1] - my, r[2], r[3]) for n, r in geom.items()}
+
+
+def in_main_row(name, places, main):
+    """True if `name` hangs off main through left/right attachments only. Judged
+    from the attachment chain, not from overlapping heights: DP-1 is taller than
+    HDMI-A-1, so the phone under HDMI-A-1 overlaps DP-1's height but is plainly
+    not in its row."""
+    seen = set()
+    while name != main:
+        rel = places.get(name)
+        if not rel or name in seen or rel.get("side") not in ("left", "right"):
+            return False
+        seen.add(name)
+        name = rel.get("of")
+    return True
+
+
+def workspace_bases(geom, main, places):
+    """Main 1-10; then main's row, right of it outwards, then left of it
+    outwards (the old rule, unchanged for a single row); then everything above
+    or below, top to bottom, left to right."""
+    if main not in geom:
+        return {}
+    mx, _my, mw, _mh = geom[main]
+    mcx = mx + mw / 2
+    others = [n for n in geom if n != main]
+    row = [n for n in others if in_main_row(n, places, main)]
+    right = sorted((n for n in row if geom[n][0] + geom[n][2] / 2 > mcx), key=lambda n: geom[n][0])
+    left = sorted((n for n in row if geom[n][0] + geom[n][2] / 2 <= mcx), key=lambda n: -geom[n][0])
+    rest = sorted((n for n in others if n not in row), key=lambda n: (geom[n][1], geom[n][0]))
+    return {name: 10 * i for i, name in enumerate([main] + right + left + rest)}
+
 
 def compute(layout, live):
-    """Left-to-right placement plus the workspace base for each monitor.
+    sizes = planned_sizes(layout, live)
+    main = layout["main"] if layout["main"] in sizes else next(iter(sizes), None)
+    if not main:
+        return {}, None, {}
+    geom = resolve(layout, sizes, main)
 
-    Only connected, non-mirrored outputs are placed, so unplugging one closes
-    the gap instead of leaving a strip of coordinate space the cursor cannot
-    cross. Bases walk right from main first, then left, because that is the
-    order the monitors are reached from the chair."""
-    order = [n for n in layout["order"]
-             if usable(live, n) and n not in layout["mirrors"]]
-    main = layout["main"] if layout["main"] in order else (order[0] if order else None)
+    # Blocks are numbered over EVERY monitor we know a size for, as if all of
+    # them were extended, so a mirrored or unplugged monitor keeps its block
+    # reserved. Numbering only the visible ones let the phone slide into
+    # HDMI-A-1's 11-20 while HDMI-A-1 was mirrored, which parked HDMI-A-1's
+    # workspaces on the phone instead of folding them onto main. The map itself
+    # only lists outputs that are actually shown, so the fold still happens.
+    every = dict(sizes)
+    for name, entry in layout["monitors"].items():
+        if name not in every and entry.get("size"):
+            every[name] = tuple(int(v) for v in entry["size"])
+    numbering = workspace_bases(resolve(layout, every, main), main, layout["place"])
+    return geom, main, {n: b for n, b in numbering.items() if n in geom}
 
-    positions, x = {}, 0
-    for name in order:
-        positions[name] = (x, 0)
-        x += live[name]["logicalWidth"]
 
-    bases = {}
-    if main:
-        i = order.index(main)
-        walk = [order[i]] + order[i + 1:] + list(reversed(order[:i]))
-        for step, name in enumerate(walk):
-            bases[name] = 10 * step
-    return order, main, positions, bases
+def descendants(places, name):
+    """Every monitor whose anchor chain runs through `name`: the ones that are
+    carried along when `name` moves."""
+    out, grew = set(), True
+    while grew:
+        grew = False
+        for n, rel in places.items():
+            if n not in out and n != name and rel.get("of") in out | {name}:
+                out.add(n)
+                grew = True
+    return out
+
+
+def snap_drop(x, y, w, h, others):
+    """Best attachment for a monitor dropped with its top-left at (x, y): the
+    closest free spot on any edge of any other monitor, snapped to start,
+    centre or end when the drop lands near one."""
+    best = None
+    for anchor, A in others.items():
+        ax, ay, aw, ah = A
+        for side in SIDES:
+            if side in ("right", "left"):
+                fixed = ax + aw if side == "right" else ax - w
+                a0, alen, blen, want = ay, ah, h, y
+            else:
+                fixed = ay + ah if side == "below" else ay - h
+                a0, alen, blen, want = ax, aw, w, x
+            shared = min(MIN_SHARED, alen, blen)
+            pos = max(a0 + shared - blen, min(want, a0 + alen - shared))
+            targets = [a0, a0 + (alen - blen) // 2, a0 + alen - blen]
+            # Also line up with the other monitors' edges, so a drop into the
+            # corner under a neighbour meets that neighbour's edge exactly.
+            for q in others.values():
+                q0, qlen = (q[1], q[3]) if side in ("right", "left") else (q[0], q[2])
+                targets += [q0, q0 + qlen, q0 - blen, q0 + qlen - blen]
+            near = min(targets, key=lambda t: abs(t - pos))
+            if abs(near - pos) <= SNAP * min(alen, blen):
+                pos = near
+            cand = (fixed, pos, w, h) if side in ("right", "left") else (pos, fixed, w, h)
+            if any(rects_overlap(cand, q) for q in others.values()):
+                continue
+            d = (cand[0] - x) ** 2 + (cand[1] - y) ** 2
+            if best is None or d < best[0]:
+                best = (d, cand, anchor)
+    return (best[1], best[2]) if best else (None, None)
 
 
 # ----------------------------------------------------------------- rendering
@@ -281,7 +613,7 @@ def monitor_line(layout, name, position, mirror=None):
     return "hl.monitor({ " + ", ".join(parts) + " })"
 
 
-def render_lua(layout, live, order, main, positions, bases):
+def render_lua(layout, live, geom, main, bases):
     out = [
         "-- GENERATED by hypr-display. Do not edit by hand: the next layout",
         "-- change overwrites it. Edit ~/.config/hypr/display-layout.json, or",
@@ -290,16 +622,18 @@ def render_lua(layout, live, order, main, positions, bases):
         f"-- main (centre) output: {main or 'none'}",
         "",
     ]
-    for name in order:
-        px, py = positions[name]
-        out.append(monitor_line(layout, name, f"{px}x{py}"))
+    for name, (x, y, _w, _h) in sorted(geom.items(), key=lambda kv: (kv[1][1], kv[1][0])):
+        line = monitor_line(layout, name, f"{x}x{y}")
+        if not usable(live, name):
+            line += "  -- standby: applies whenever it appears"
+        out.append(line)
     for name in layout["mirrors"]:
         if name in live and main:
             out.append(monitor_line(layout, name, "auto", mirror=main))
 
     out.append("")
-    out.append("-- Workspace blocks follow the arrangement, not the connector:")
-    out.append("-- main owns 1-10, then rightwards from main, then leftwards.")
+    out.append("-- Workspace blocks follow the arrangement, not the connector: main owns")
+    out.append("-- 1-10, then its row rightwards, then leftwards, then above/below.")
     for name, base in sorted(bases.items(), key=lambda kv: kv[1]):
         for n in range(1, 11):
             ws = base + n
@@ -489,12 +823,15 @@ def rehome_workspaces(bases):
     stays put when its block changes owner. Walk them once and move the ones
     that now belong somewhere else. Focus is the caller's business."""
     owner = owner_map(bases)
+    # A standby output has a block even while it is absent; its workspaces wait
+    # wherever Hyprland parked them until it comes back.
+    present = {m.get("name") for m in hypr_json("monitors")}
     for ws in hypr_json("workspaces"):
         wid = int(ws.get("id") or 0)
         if wid < 1:
             continue
         target = owner.get(wid)
-        if target and ws.get("monitor") != target:
+        if target and target in present and ws.get("monitor") != target:
             dispatch(f'hl.dsp.workspace.move({{ workspace = {wid}, monitor = "{target}" }})')
 
 
@@ -522,6 +859,11 @@ def tidy_placeholders(bases):
         real = [base + n for n in range(1, 11) if counts.get(base + n, 0) > 0]
         if real:
             dispatch(f"hl.dsp.focus({{ workspace = {real[0]} }})")
+        elif not base < active_id <= base + 10:
+            # Empty AND outside its own block: left over from a renumbering (the
+            # phone sat on an empty 31 after its block went 31-40 and back).
+            # Its block's first workspace is created on it by the workspace rule.
+            dispatch(f"hl.dsp.focus({{ workspace = {base + 1} }})")
 
 
 def restore_focus(wid):
@@ -533,8 +875,8 @@ def restore_focus(wid):
 
 def apply(layout, live, force=False):
     old_bases = read_bases()          # read before the map is overwritten below
-    order, main, positions, bases = compute(layout, live)
-    lua = render_lua(layout, live, order, main, positions, bases)
+    geom, main, bases = compute(layout, live)
+    lua = render_lua(layout, live, geom, main, bases)
     ws_map = json.dumps(bases, indent=2) + "\n"
 
     unchanged = (read_or_none(GEN_LUA) == lua and read_or_none(WS_MAP) == ws_map)
@@ -567,7 +909,7 @@ def apply(layout, live, force=False):
     landed = folded.get(was_on, was_on)        # follow focus through both passes
     restore_focus(unfolded.get(landed, landed))
 
-    # Only when ids actually changed hands, so a plain left/right move does not
+    # Only when ids actually changed hands, so a plain move does not
     # reload the bar for nothing.
     if folded or unfolded or old_bases != bases:
         resync_waybar()
@@ -589,14 +931,14 @@ def read_or_none(path):
 
 # ------------------------------------------------------------------ commands
 
-def place(order, name, main, side):
-    order = [n for n in order if n != name]
-    if main in order:
-        i = order.index(main)
-        order.insert(i if side == "left" else i + 1, name)
-    else:
-        order.append(name)
-    return order
+def rederive(layout, geom, root):
+    """Replace the placements of every planned monitor with ones derived from
+    `geom`. Entries for absent or mirrored monitors are kept, so they come back
+    where they were."""
+    places = {n: p for n, p in layout["place"].items() if n not in geom}
+    places.update(derive_places(geom, root))
+    places.pop(root, None)
+    layout["place"] = places
 
 
 def cmd_set(name, slot):
@@ -606,27 +948,75 @@ def cmd_set(name, slot):
     layout = load_layout(live)
     if name not in layout["monitors"]:
         die(f"unknown output {name!r}")
+    geom, main, _bases = compute(layout, live)
 
-    if slot == "mirror":
+    if slot == "main":
+        if not usable(live, name):
+            die(f"{name} is not connected")
+        # Promoting a monitor moves nothing: re-root the same geometry on it.
+        layout["mirrors"] = [n for n in layout["mirrors"] if n != name]
+        if name not in geom:
+            geom, main, _bases = compute(layout, live)
+        layout["main"] = name
+        rederive(layout, geom, name)
+    elif slot == "mirror":
         if name == layout["main"]:
             die("the main monitor cannot mirror itself")
-        layout["order"] = [n for n in layout["order"] if n != name]
+        # Its own placement is kept, so un-mirroring puts it back where it was;
+        # anything attached to it re-attaches to its anchor in the meantime.
         if name not in layout["mirrors"]:
             layout["mirrors"].append(name)
-    else:
-        # Leaving mirror mode puts the output back in the chain before anything
-        # else is decided, so "left" and "right" mean the same thing either way.
+    elif slot == "extend":
         layout["mirrors"] = [n for n in layout["mirrors"] if n != name]
-        if name not in layout["order"]:
-            layout["order"] = place(layout["order"], name, layout["main"], "right")
-        if slot == "main":
-            layout["main"] = name          # arrangement is untouched: promoting
-        else:                              # a monitor does not move any monitor
-            layout["order"] = place(layout["order"], name, layout["main"], slot)
+    else:                                   # left / right of main, top-aligned
+        if name == layout["main"]:
+            die("the main monitor cannot sit beside itself")
+        layout["mirrors"] = [n for n in layout["mirrors"] if n != name]
+        layout["place"][name] = {"of": layout["main"], "side": slot, "align": "start"}
 
     layout = normalise(layout, live)
     save_layout(layout)
     apply(layout, live)
+    print(json.dumps(state(layout, live), indent=2))
+
+
+def cmd_move(name, x, y):
+    live = live_monitors()
+    layout = load_layout(live)
+    geom, main, _bases = compute(layout, live)
+    if name not in geom:
+        die(f"{name} has no position to move (mirrored or not connected)")
+    try:
+        x, y = int(round(float(x))), int(round(float(y)))
+    except ValueError:
+        die("x and y must be numbers")
+    w, h = geom[name][2], geom[name][3]
+    trace(f"move {name} to {x},{y}")      # every request, even one that snaps back
+
+    if name == main:
+        # Everything hangs off main, so "moving main" means moving it relative
+        # to the rest: hold the others still and re-root the tree on it.
+        others = {n: r for n, r in geom.items() if n != name}
+        rect, _anchor = snap_drop(x, y, w, h, others) if others else (None, None)
+        if rect is not None:
+            moved = dict(others)
+            moved[name] = rect
+            rederive(layout, moved, main)
+    else:
+        # Whatever is attached to the dragged monitor travels with it, so it is
+        # neither a snap target nor an obstacle; only its own placement changes.
+        carried = descendants(layout["place"], name)
+        targets = {n: r for n, r in geom.items() if n != name and n not in carried}
+        rect, anchor = snap_drop(x, y, w, h, targets) if targets else (None, None)
+        if rect is not None:
+            rel = relation(targets[anchor], rect) or loose_relation(targets[anchor], rect)
+            rel["of"] = anchor
+            layout["place"][name] = rel
+
+    if rect is not None:
+        layout = normalise(layout, live)
+        save_layout(layout)
+        apply(layout, live)
     print(json.dumps(state(layout, live), indent=2))
 
 
@@ -638,38 +1028,40 @@ def cmd_apply():
 
 
 def state(layout, live):
-    order, main, positions, bases = compute(layout, live)
+    geom, main, bases = compute(layout, live)
     merged = load_merged()
-    rows = []
 
-    def row(name, slot):
+    def row(name):
         m = live.get(name, {})
+        entry = layout["monitors"].get(name, default_entry())
         base = bases.get(name)
-        model = m.get("model") or m.get("description") or name
+        connected = usable(live, name)
+        if name == main:
+            slot = "main"
+        elif name in layout["mirrors"]:
+            slot = "mirror"
+        elif name in geom:
+            slot = "extend" if connected else "standby"
+        else:
+            slot = "offline"
+        x, y, w, h = geom.get(name, (0, 0) + tuple(entry.get("size") or (0, 0)))
         return {
             "name": name,
-            "label": model,
+            "label": m.get("model") or m.get("description") or entry.get("label") or name,
             "make": m.get("make", ""),
             "slot": slot,
-            "connected": usable(live, name),
-            "width": m.get("logicalWidth", 0),
-            "height": m.get("logicalHeight", 0),
+            "connected": connected,
+            "standby": bool(entry.get("standby")),
+            "x": x, "y": y, "width": w, "height": h,
             "refresh": round(m.get("refresh", 0)),
-            "mode": layout["monitors"].get(name, default_entry()).get("mode", ""),
-            "x": positions.get(name, (0, 0))[0],
+            "mode": entry.get("mode", ""),
             "workspaces": f"{base + 1}-{base + 10}" if base is not None else "",
             "merged": len(merged.get(name, [])) if slot == "mirror" else 0,
         }
 
-    main_index = order.index(main) if main in order else -1
-    for i, name in enumerate(order):
-        rows.append(row(name, "main" if name == main
-                        else "left" if i < main_index else "right"))
-    for name in layout["mirrors"]:
-        rows.append(row(name, "mirror"))
-    for name in layout["order"]:
-        if name not in order and name not in layout["mirrors"]:
-            rows.append(row(name, "offline"))
+    rank = {"main": 0, "extend": 1, "standby": 2, "mirror": 3, "offline": 4}
+    rows = sorted((row(n) for n in layout["monitors"]),
+                  key=lambda r: (rank[r["slot"]], bases.get(r["name"], 999), r["name"]))
     return {"main": main, "monitors": rows}
 
 
@@ -726,8 +1118,12 @@ def main():
         with_lock(cmd_apply)
     elif args[0] == "set":
         if len(args) != 3:
-            die("usage: hypr-display set <output> <main|left|right|mirror>")
+            die("usage: hypr-display set <output> <main|mirror|extend|left|right>")
         with_lock(lambda: cmd_set(args[1], args[2]))
+    elif args[0] == "move":
+        if len(args) != 4:
+            die("usage: hypr-display move <output> <x> <y>")
+        with_lock(lambda: cmd_move(args[1], args[2], args[3]))
     else:
         die(f"unknown command {args[0]!r}")
 
