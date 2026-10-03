@@ -23,6 +23,14 @@ U="$(/usr/bin/id -u)"
 
 defer() { log "hard lock deferred: $1"; exit 1; }
 
+# 0. Caffeine from the Quickshell System pane: Suji turned it on by hand, as a
+#    10 or 30 minute timer or "always". The timed modes end on their own; "always"
+#    is the one that can be forgotten, and he chose (2026-10-03) to let it hold
+#    this lock too. If the check cannot run, pgrep finds nothing and we lock.
+if ! /home/suji/.config/quickshell/scripts/caffeine.sh idle-allowed; then
+    defer "caffeine is on ($(/home/suji/.config/quickshell/scripts/caffeine.sh status))"
+fi
+
 # 1. A real voice call or screen share: the client is capturing the microphone.
 #    A leaked idle inhibitor does NOT capture anything, which is what separates
 #    "watching someone's screen share" from "Discord forgot to let go".
