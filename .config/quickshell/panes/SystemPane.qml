@@ -10,7 +10,7 @@ import ".."
 Item {
     id: pane
 
-    function refresh() { poll.running = true; collector.running = true; }
+    function refresh() { poll.running = true; collector.running = true; caffeineStatus.running = true; }
     function reset()   { poll.running = false; }
     Component.onDestruction: poll.running = false
 
@@ -24,6 +24,9 @@ Item {
     property string diskTotal: ""
     property real diskPct: 0
     property var procs: []
+    property bool caffeine: false
+    property string caffeineMode: ""     // "10", "30" or "always" while on
+    property int caffeineLeft: -1         // seconds left in a timed mode, else -1
 
     // Previous /proc/stat sample, so the first tick produces no bogus spike.
     property real prevTotal: 0
@@ -33,7 +36,41 @@ Item {
     Timer {
         id: poll
         interval: 2000; repeat: true; running: false
-        onTriggered: collector.running = true
+        onTriggered: { collector.running = true; caffeineStatus.running = true; }
+    }
+
+    // Caffeine state always comes from the live inhibitor list (via the
+    // script), never from QML state, so it is right after a reload.
+    Process {
+        id: caffeineStatus
+        command: ["/home/suji/.config/quickshell/scripts/caffeine.sh", "status"]
+        stdout: StdioCollector {
+            onStreamFinished: pane.readCaffeine(this.text)
+        }
+    }
+    // One click steps off -> 10 min -> 30 min -> always -> off.
+    Process {
+        id: caffeineSet
+        command: ["/home/suji/.config/quickshell/scripts/caffeine.sh", "cycle"]
+        stdout: StdioCollector {
+            onStreamFinished: pane.readCaffeine(this.text)
+        }
+    }
+    function toggleCaffeine() { caffeineSet.running = true; }
+    // Status is "off" or "on <10|30|always> <seconds left|->".
+    function readCaffeine(text) {
+        const p = text.trim().split(/\s+/);
+        pane.caffeine = p[0] === "on";
+        pane.caffeineMode = pane.caffeine ? (p[1] || "always") : "";
+        const left = parseInt(p[2]);
+        pane.caffeineLeft = isNaN(left) ? -1 : left;
+    }
+    function caffeineLabel() {
+        if (!pane.caffeine) return "OFF";
+        if (pane.caffeineMode === "always") return "ALWAYS";
+        const l = Math.max(0, pane.caffeineLeft);
+        const mm = Math.floor(l / 60), ss = l % 60;
+        return pane.caffeineMode + " MIN · " + mm + ":" + (ss < 10 ? "0" : "") + ss;
     }
 
     Process {
@@ -156,6 +193,48 @@ Item {
             id: col
             width: parent.width
             spacing: 10
+
+            // ---- caffeine: click cycles off / 10 min / 30 min / always ----
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 44
+                radius: Theme.radius
+                color: pane.caffeine ? Theme.wash(0.25)
+                     : caffeineMouse.containsMouse ? Theme.wash(0.15)
+                     : Theme.base
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 8
+                    Text {
+                        text: "󰅶"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 16
+                        color: pane.caffeine ? Theme.accent : Theme.muted
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "CAFFEINE"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Theme.subtext
+                    }
+                    Text {
+                        text: pane.caffeineLabel()
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: pane.caffeine ? Theme.ok : Theme.muted
+                    }
+                }
+                MouseArea {
+                    id: caffeineMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: pane.toggleCaffeine()
+                }
+            }
 
             StatRow {
                 label: "CPU"
