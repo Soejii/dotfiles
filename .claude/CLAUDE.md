@@ -46,7 +46,8 @@ Workers read and edit files themselves via opencode; you orchestrate and verify.
 Run several named workers in parallel (mechanical → a `-fast` worker, heavy → a `-pro` worker). One name = one warm session + one model. If you are ever headless (not launched via `cockpit`), the same commands still work; the pane just isn't attached to a visible window. Genuine one-shots may use raw `opencode run` (see fallback rules below).
 
 Workflow rules:
-- **Arm a monitor the moment you spawn a worker; do not hand-poll and do not rely on remembering.** Immediately after `cockpit spawn`, start a background Monitor on that worker's session that emits on (a) completion or deregistration, (b) a stall, meaning context frozen while `cockpit ls` still says `running`, (c) provider stream errors, meaning a non-`-` value in the `ERR` column of `cockpit ls` (see the sub-bullet below — this is now directly observable, so there is no excuse for missing it), and (d) **context ballooning**, meaning the `CONTEXT` column crossing a ceiling (~500k) or multiplying several times over between checks. Watch for `cockpit ls` printing its own `large context detected` warning and treat that as the trigger. Ballooning and stalling are opposite symptoms and a monitor that only checks for frozen context will sit silent through a runaway: `sol` went 222k to 989k in nine minutes while the monitor correctly reported nothing wrong. Then get on with other work; silence from a correctly armed monitor means "still running", whereas silence from no monitor means nothing at all. I have twice gone quiet on a running worker because the conversation moved on to something more interesting, and Suji had to prompt me both times. The rule exists because knowing the lesson is demonstrably not enough.
+- **The `cockpit-watchdog` mod now arms this monitor for you** (see "Claude Code mods" below). It starts watching on `cockpit spawn`/`say`/`fork`/`restart`, polls `cockpit ls` every 30s, and wakes the session with a `[cockpit-watchdog]` message on every condition listed in the next bullet; a quiet worker only gets a toast. So do NOT also arm a hand-made Monitor; that doubles every alert. When a `[cockpit-watchdog]` message arrives, act on it like a monitor event. Arm one by hand only if the watchdog is not running (no `cockpit:` entry in the status line after a spawn).
+- **Arm a monitor the moment you spawn a worker (by hand only when the watchdog is not running); do not hand-poll and do not rely on remembering.** Immediately after `cockpit spawn`, start a background Monitor on that worker's session that emits on (a) completion or deregistration, (b) a stall, meaning context frozen while `cockpit ls` still says `running`, (c) provider stream errors, meaning a non-`-` value in the `ERR` column of `cockpit ls` (see the sub-bullet below — this is now directly observable, so there is no excuse for missing it), and (d) **context ballooning**, meaning the `CONTEXT` column crossing a ceiling (~500k) or multiplying several times over between checks. Watch for `cockpit ls` printing its own `large context detected` warning and treat that as the trigger. Ballooning and stalling are opposite symptoms and a monitor that only checks for frozen context will sit silent through a runaway: `sol` went 222k to 989k in nine minutes while the monitor correctly reported nothing wrong. Then get on with other work; silence from a correctly armed monitor means "still running", whereas silence from no monitor means nothing at all. I have twice gone quiet on a running worker because the conversation moved on to something more interesting, and Suji had to prompt me both times. The rule exists because knowing the lesson is demonstrably not enough.
   - Failure signatures worth recognising: `ProviderHeaderTimeoutError` after 10000ms on the `openai/gpt-5.6-*` family kills a run while the pane still looks busy; a worker in that retry loop shows `status=running` with frozen context and near-zero CPU. Two Luna attempts died this way at ctx=0, which proved it was the provider and not the variant. A cheap way to test whether a provider is healthy again is to spawn a trivial worker on it and watch for a stream error in the first ~30 seconds, rather than burning a real brief to find out.
   - **A silent pane is ambiguous, and only the server log disambiguates it.** opencode logs provider stream errors to `~/.local/share/opencode/log/opencode.log` and *never* to stdout or the pane, then retries on a doubling backoff (≈7, 13, 16, 20, 37, 69, 134s). So "no streamed text for eight minutes" is produced identically by a worker retrying a dead endpoint and a worker thinking hard on a large input. On 2026-07-30 that ambiguity cost a whole session: three `sol` reviewers sat in a silent overload-retry loop (one killed at 25 min) while a `luna` reviewer that looked *byte-identical* in the pane was fine and finished, having logged zero errors. Never conclude "hung" from silence alone.
     - **Triage with `cockpit errors`** (added 2026-07-30), or read the `ERR` column in `cockpit ls`, which now shows e.g. `10xoverload` against the offending worker. Both join the registry's `session_id` to that log over a 900s window (`COCKPIT_ERR_WINDOW` to widen; `cockpit errors <seconds>` for a one-off). `cockpit errors` reads the log directly, so it still explains a session cockpit has already forgotten. A frozen-context monitor is blind to this class of failure by construction, so watch the log too, not just the numbers.
@@ -97,13 +98,33 @@ rather than a regression test.
 - Debugging: root-cause analysis needs the orchestrator's own reasoning
 - Final correctness sign-off
 
-### Peer review is mandatory before every commit
-**Never run `git commit` on a code change until an external peer review has come
-back and I have acted on its findings.** Load the `peer-review` skill and follow
-it; it holds the model choice, the brief, and the triage rules. This applies to
-my own changes as much as a worker's. Docs-only or config-only diffs may skip it;
-say that you skipped it and why. If I ask you to commit and no review has run,
-run the review first rather than asking whether you should.
+### Peer review before a commit: recommended, and my call
+Peer review by an external model is the default for code changes, but it is a
+reminder, not a gate (changed 2026-10-04; it used to be mandatory). Before
+committing code that has not been reviewed since its last edit, ask me whether
+to run a peer review first or commit anyway, and do what I answer. The
+`review-nudge` mod asks this for you on `git commit` with a "Peer review first /
+Commit anyway" question; do not ask a second time on top of it. If I choose the
+review, load the `peer-review` skill and follow it (it holds the brief and the
+triage rules), act on its findings, then commit. **The default reviewer is codex
+on `gpt-6.1-sol` at `medium` effort** (set 2026-10-30); I can still name another
+model or effort per run. This applies
+to my own changes as much as a worker's. Docs-only or config-only diffs skip the
+question entirely.
+
+## Claude Code mods (`~/CODE/mods`, marketplace `suji-mods`, user scope)
+Four function-hook plugins enforce some of the rules in this file. They explain
+themselves when they act (a refusal or a note in the tool result), so follow what
+they say rather than retrying around them.
+- `flutter-guard`: in fvm-pinned repos runs bare `flutter`/`dart` through `fvm`, swaps a whole-repo `flutter analyze` for `flutter-analyze-diff`, and refuses a build/pub/test while another runs in the same repo.
+- `pdf-router`: a Read of a text-layer PDF is refused with a pointer to a markdown extract beside it; Read with `pages` set to look at tables.
+- `review-nudge`: the peer-review question above.
+- `cockpit-watchdog`: the worker monitor above.
+
+**A mod that throws is skipped and the command runs unchecked**, and none of them
+load if plugins are off. So the written rules in this file still hold; the mods
+are the enforcement, not a replacement. Details and how to update them are in
+memory (`claude-code-mods-suji-mods`).
 
 ## Writing Style
 

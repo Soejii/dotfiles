@@ -1,6 +1,6 @@
 ---
 name: peer-review
-description: Peer review of a code diff by an external model before committing. Use before every `git commit`, and whenever Suji asks to review or sanity-check a change.
+description: Peer review of a code diff by an external model before committing. Use when Suji chooses a review before a commit (review-nudge asks "Peer review first / Commit anyway"), and whenever Suji asks to review or sanity-check a change.
 ---
 
 # Peer review before commit
