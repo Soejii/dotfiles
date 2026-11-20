@@ -28,9 +28,22 @@
         720
       ],
       "label": "Redmi 10 (Moonlight)"
+    },
+    "FALLBACK": {
+      "mode": "preferred",
+      "scale": 1,
+      "size": [
+        1920,
+        1080
+      ]
     }
   },
   "place": {
+    "FALLBACK": {
+      "of": "DP-1",
+      "side": "right",
+      "align": "start"
+    },
     "HDMI-A-1": {
       "side": "right",
       "align": "start",
