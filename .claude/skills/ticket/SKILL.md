@@ -42,6 +42,46 @@ line exists to let him catch it in one word.
 Fixes land in the CWD repo only. If a migration sibling needs the same fix, he
 will say so.
 
+### Start the Nexora timer and claim the PIC
+
+Right after that line, before reading the issue, start Suji's time tracking.
+Nexora is the team's time tracker for Linear issues, reached through the
+`nexora` MCP.
+
+**Every write to Suji's time log needs his yes first.** Before
+`nexora_start_timer`, `nexora_stop_timer`, `nexora_log_time`,
+`nexora_update_entry` or `nexora_delete_entry`, state the exact action in one
+line (ticket, note, and times for a manual entry) and wait for a clear yes. If
+he says no, leave Nexora alone; never substitute a different entry, such as a
+backfilled manual one. Read-only calls (`nexora_status`, `nexora_list_entries`,
+`nexora_get_pics`) need no confirmation. (Set 2026-10-31 on SDG-255, after an
+unasked offer to backfill time drew "dont log it like that".)
+
+1. Call `nexora_status`.
+2. Already running on this ticket (a resumed run): leave it.
+3. Running on another ticket: propose stopping it with `nexora_stop_timer`.
+   Only one timer runs at a time, and the new ticket is the work now.
+4. Propose starting it with `nexora_start_timer` on this ticket's ID. Ask
+   steps 3 and 4 together in one line, e.g. `Stop the timer on SDG-12 and
+   start one on SDG-36?`
+5. Make Suji the PIC Development. Call `nexora_get_pics` on the ticket:
+   - `DEVELOPMENT` empty: `nexora_set_pic` with role `DEVELOPMENT`, user `me`.
+   - Already Suji: leave it.
+   - Someone else: leave it and say who in the opener. Setting it also moves
+     the Linear assignee, so never take it over unasked.
+
+Put the timer question in the opener, and keep investigating while you wait;
+start the timer once he says yes. Report the PIC in the same opener, such as
+`PIC Development set.`
+
+Time tracking never blocks the ticket. If the `nexora` tools are missing or
+fail, say so in one line and carry on. "Sign in again" means Suji's Nexora
+session in Firefox has expired; he fixes that by logging in to Nexora in
+Firefox.
+
+If the run stops early (the issue is labelled `Web`, or the platform check
+in step 2 disagrees with the repo), ask to stop the timer before you stop.
+
 ## 2. Investigate before asking anything
 
 Read the issue with `get_issue`, passing `includeRelations: true` so blockers and
@@ -95,7 +135,11 @@ Nothing else does.
 
 ## 3. Grill
 
-Run a `grilling` session on what step 2 left open.
+Grill with docs on what step 2 left open: load both `grilling` (the interview)
+and `domain-modeling` (the repo's `GLOSSARY.md` and ADRs), then run the session.
+Load the two directly; `grill-with-docs` is the same pair but is user-only and
+refuses a model invocation. Terms resolved here are written to the glossary as
+they settle; most tickets add none, and that is fine.
 
 Its output is the worker's kickoff, so the understanding has to survive being
 written down for someone who was not in the room. Done when Suji confirms.
@@ -107,8 +151,9 @@ default with a one-sentence why, then wait for him to type his answer.
 
 ## 5. Spawn, monitor, verify
 
-`cockpit spawn` with a self-contained kickoff built from step 3. Arm the Monitor
-immediately, per `CLAUDE.md`.
+`cockpit spawn` with a self-contained kickoff built from step 3. If the repo has
+a `GLOSSARY.md`, tell the worker to read it and use its terms in names and
+comments. Arm the Monitor immediately, per `CLAUDE.md`.
 
 Gates are `/home/suji/.local/bin/flutter-analyze-diff` and `fvm flutter test`,
 plus a real `fvm flutter build apk --debug` when the change touches widget APIs,
@@ -132,7 +177,8 @@ before anything is fixed.
 ## 7. Emulator, only on request
 
 Suji checks the app himself by default. If he asks, load
-`android-emulator-drive`.
+`android-emulator-drive`. In a remote run this step is on by default; see
+Remote runs.
 
 ## 8. Commit, then stop
 
@@ -140,7 +186,70 @@ Branch off current `HEAD` as `<issue-id>-<short-slug>`, e.g.
 `SDG-94-nilai-desimal`, because these repos sit on different bases (`main`,
 `master`, `dev-suji`). Linear links a branch to its issue on the identifier
 alone, so this short form still associates; ignore the long `gitBranchName` it
-suggests unless Suji asks for it. Commit there and stop.
+suggests unless Suji asks for it. Commit there and stop. Glossary or ADR changes
+from step 3 are their own commit, separate from the fix.
+
+Then ask to stop the timer with `nexora_stop_timer`, showing the note
+`Branch <branch>, commit <short hash>`, and stop it on his yes. If Suji asks
+for more work in this session afterwards, ask whether to start it again on the
+same ticket before doing the work.
 
 Report: worker and model used, how many fix rounds it took, what peer review
-flagged and what you did with each finding, and what remains open.
+flagged and what you did with each finding, the time the timer tracked, and
+what remains open.
+
+## Remote runs
+
+A run started by `ticket-start` (Suji sends `/ticket` to Hermes on Telegram)
+says "remote run" in its invocation. Suji drives it from the Claude app on
+his phone through Remote Control. Every step above still applies, with these
+changes.
+
+- **Write for a phone.** Short messages and plain sentences. In the grill,
+  ask one question at a time. Put paths in `code`; avoid wide tables.
+- **Step 1:** the launcher chose the repo from the ticket's `Application`
+  row. If step 2's platform check disagrees, stop and say so.
+- **Step 4:** still ask. Suggest Luna `xhigh` as the default; he types the
+  answer from his phone.
+- **Step 7 is on by default** when the change touches anything a user sees.
+  Load `android-emulator-drive`, drive the fixed flow, and record it:
+
+  ```bash
+  mkdir -p ~/.cache/ticket-evidence
+  adb shell screenrecord --time-limit 60 /sdcard/SDG-26.mp4 &   # then drive the flow
+  adb pull /sdcard/SDG-26.mp4 ~/.cache/ticket-evidence/SDG-26.mp4
+  ```
+
+  Keep it under 60 s and the file under 45 MB (Telegram bots stop at 50 MB).
+  For a change with nothing visible, skip it and say why.
+- **Step 8, after the commit:** send the evidence to Telegram, then report
+  in the session as usual. Gate lines quote only gates you ran yourself.
+
+  ```bash
+  hermes send -t telegram "SDG-26 done: <one-line summary>
+  Branch SDG-26-short-slug, commit abc1234
+  Gates: <analyze result>, <test result>, <apk build result>
+  Peer review: <n> findings, <what happened to them>
+  Time: <duration the timer tracked>
+  MEDIA:/home/suji/.cache/ticket-evidence/SDG-26.mp4"
+  ```
+
+  Ask to stop the timer before this message, so the `Time` line is final.
+  If he says no, send the duration so far and say the timer is still running.
+
+  Check that it exits 0. Never put angle brackets in the sent text; replace
+  every placeholder above with the real value.
+- **Ending:** first stop every worker this run spawned with
+  `cockpit stop <name>` (never `cockpit down` or `cockpit-nuke`: other work
+  may be running in that grid). Then, when Suji has nothing more, tell him
+  to send `/exit` in the app. That closes the session and frees the launcher for the next ticket.
+  Waiting on him is fine: after 90 idle minutes the PC may sleep, but the
+  run stays open and he wakes it with Wake-PC. When the run ends, the
+  launcher tells him on Telegram, so do not send an "ended" message yourself.
+- **Timer:** `ticket-awake` handles idle time. After 90 idle minutes it
+  stops the timer and trims the entry back to the run's last activity; when
+  he replies, it starts a new timer on the same ticket. So a long wait for
+  his answer is not logged, and the ticket can end up with several entries.
+  If the run ends before step 8 (a crash, an early `/exit`), it stops a timer
+  still on this ticket and says so in its Telegram message. Do not start or
+  stop the timer yourself around waits; only at the points the steps name.
