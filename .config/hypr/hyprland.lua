@@ -295,7 +295,8 @@ hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("/home/suji/.local/bin/ws-overview"))
 -- their DRM link on DPMS-off instead of blanking, so Hyprland momentarily has no
 -- outputs; tiled windows get re-laid out on return but floating ones keep stale
 -- absolute coords and land off-screen (the Android emulator does this every lock).
-hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("/home/suji/.local/bin/hypr-rescue-offscreen"))
+-- Rescued windows, and the emulator wherever it is, come to the current workspace.
+hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("/home/suji/.local/bin/hypr-rescue-offscreen --bring Emulator --notify"))
 
 -- Scratchpad (special workspace "magic")
 hl.bind(mainMod .. " + S",             hl.dsp.workspace.toggle_special("magic"))

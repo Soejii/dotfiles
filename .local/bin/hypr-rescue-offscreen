@@ -8,13 +8,19 @@ coordinates and can come back parked outside all monitor bounds. They are still
 mapped and still listed by `hyprctl clients`, just at somewhere like x=-1821,
 where no workspace can show them. The Android emulator hits this every time.
 
-Windows are moved as a group per monitor, by one shared translation, so a
+Rescued windows come to the workspace you are on, because the one they were
+stranded on is usually not obvious. `--bring CLASS` also fetches windows of
+that class that are on screen but on another workspace (the keybind passes
+`--bring Emulator`), so one key always answers "where did the emulator go".
+
+Windows are moved as a group per app (pid), by one shared translation, so a
 multi-window app (the emulator's phone window plus its toolbar) keeps its
 relative arrangement instead of being stacked on top of itself.
 
 Hyprland 0.56 dispatchers are Lua; the old `dispatch movewindowpixel` string
-form is a parse error. `hl.dsp.window.move` only acts on the focused window, so
-each rescue is focus-then-move, with the original focus restored at the end.
+form is a parse error. Moving to a workspace takes a window address, but the
+pixel `hl.dsp.window.move` only acts on the focused window, so each rescue is
+send-to-workspace, then focus, then move. The last rescued window keeps focus.
 """
 
 import argparse
@@ -82,13 +88,28 @@ def main():
         "monitor (default 0.05; use 0 for fully off-screen only)",
     )
     ap.add_argument("--margin", type=int, default=40, help="gap from the monitor edge (default 40)")
+    ap.add_argument(
+        "--bring",
+        action="append",
+        default=[],
+        metavar="CLASS",
+        help="also bring on-screen windows of this class here from other workspaces (repeatable)",
+    )
+    ap.add_argument("--notify", action="store_true", help="report the result as a desktop notification")
     ap.add_argument("-n", "--dry-run", action="store_true", help="report what would move, change nothing")
     ap.add_argument("-q", "--quiet", action="store_true", help="only report on error")
     args = ap.parse_args()
 
+    def report(text):
+        if not args.quiet:
+            print(text)
+        if args.notify and not args.dry_run:
+            subprocess.run(["notify-send", "-a", "hypr-rescue", "Window rescue", text], check=False)
+
     try:
         clients = hyprctl_json("clients")
         monitors = hyprctl_json("monitors")
+        here = hyprctl_json("activeworkspace")
     except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError) as exc:
         print(f"cannot talk to Hyprland: {exc}", file=sys.stderr)
         return 2
@@ -98,9 +119,12 @@ def main():
         print("no enabled monitors; nothing to rescue onto", file=sys.stderr)
         return 2
 
-    focused = next((m["id"] for m in monitors if m.get("focused")), next(iter(rects)))
+    focused = here.get("monitorID")
+    if focused not in rects:
+        focused = next((m["id"] for m in monitors if m.get("focused")), next(iter(rects)))
+    here_id = here["id"]
 
-    stranded = {}
+    groups = {}
     for client in clients:
         if not client.get("mapped"):
             continue
@@ -110,20 +134,19 @@ def main():
         rect = (at[0], at[1], size[0], size[1])
         area = size[0] * size[1]
         visible = sum(overlap_area(rect, mon) for mon in rects.values())
-        if visible / area > args.min_visible:
-            continue
-        target = client["monitor"] if client.get("monitor") in rects else focused
-        stranded.setdefault(target, []).append(client)
+        stranded = visible / area <= args.min_visible
+        elsewhere = client["class"] in args.bring and client["workspace"]["id"] != here_id
+        if stranded or elsewhere:
+            groups.setdefault(client.get("pid"), []).append(client)
 
-    if not stranded:
-        if not args.quiet:
-            print("no stranded windows")
+    if not groups:
+        report("No stranded windows")
         return 0
 
-    # One shared translation per monitor keeps multi-window apps arranged.
+    # One shared translation per app keeps multi-window apps arranged.
+    mx, my, mw, mh = rects[focused]
     moves = []
-    for mon_id, group in stranded.items():
-        mx, my, mw, mh = rects[mon_id]
+    for group in groups.values():
         left = min(c["at"][0] for c in group)
         top = min(c["at"][1] for c in group)
         right = max(c["at"][0] + c["size"][0] for c in group)
@@ -137,7 +160,10 @@ def main():
 
     if args.dry_run:
         for client, x, y in moves:
-            print(f"{client['class']!r} {client['title'][:40]!r} {client['at']} -> [{x}, {y}]")
+            print(
+                f"{client['class']!r} {client['title'][:40]!r} workspace {client['workspace']['name']} "
+                f"{client['at']} -> workspace {here['name']} [{x}, {y}]"
+            )
         return 0
 
     restore = None
@@ -148,8 +174,17 @@ def main():
         pass
 
     moved, failed = 0, 0
+    fetched = {}  # class -> workspace it came from, for the report
     for client, x, y in moves:
         addr = client["address"]
+        if client["workspace"]["id"] != here_id:
+            ok, msg = dispatch(
+                f"hl.dsp.window.move({{ workspace = {here_id}, window = 'address:{addr}', follow = false }})"
+            )
+            if not ok:
+                print(f"could not bring {client['class']} here: {msg}", file=sys.stderr)
+                failed += 1
+                continue
         ok, msg = dispatch(f"hl.dsp.focus({{ window = 'address:{addr}' }})")
         if not ok:
             print(f"could not focus {client['class']}: {msg}", file=sys.stderr)
@@ -167,19 +202,24 @@ def main():
         ok, msg = dispatch(f"hl.dsp.window.move({{ x = {x}, y = {y} }})")
         if ok:
             moved += 1
+            fetched.setdefault(client["class"], client["workspace"]["name"])
             if not args.quiet:
                 print(f"rescued {client['class']!r} {client['at']} -> [{x}, {y}]")
         else:
             print(f"could not move {client['class']}: {msg}", file=sys.stderr)
             failed += 1
 
-    if restore:
+    # Leave the rescued window focused so it is on top; restore only if none moved.
+    if restore and not moved:
         dispatch(f"hl.dsp.focus({{ window = 'address:{restore}' }})")
 
+    if moved:
+        what = ", ".join(f"{cls} (was on workspace {ws})" for cls, ws in fetched.items())
+        report(f"Brought to workspace {here['name']}: {what}")
     if failed:
+        if args.notify:
+            report(f"{failed} window(s) could not be moved")
         return 1
-    if args.quiet and moved:
-        print(f"rescued {moved} window(s)")
     return 0
 
 
