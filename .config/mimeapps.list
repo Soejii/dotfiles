@@ -7,6 +7,7 @@ application/vnd.openxmlformats-officedocument.wordprocessingml.document=libreoff
 application/zip=libreoffice-8.desktop;
 application/x-bittorrent=com.github.persepolisdm.persepolis.desktop;
 text/html=code.desktop;
+video/mp4=vlc.desktop;
 
 [Default Applications]
 application/pdf=org.gnome.Evince.desktop
@@ -31,7 +32,7 @@ application/x-cbz=org.gnome.Evince.desktop
 application/x-cbr=org.gnome.Evince.desktop
 application/postscript=org.gnome.Evince.desktop
 inode/directory=thunar.desktop
-video/mp4=mpv.desktop
+video/mp4=vlc.desktop
 video/x-matroska=mpv.desktop
 video/webm=mpv.desktop
 video/quicktime=mpv.desktop
