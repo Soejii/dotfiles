@@ -184,7 +184,7 @@ column counts. So when a specific table's values matter, read those pages visual
 
 ## Flutter projects
 
-The SIDIGS apps (`nakula`, `chiron`, `gaia`, `icarus`, `arjuna`, `karna` in `~/CODE`) are fvm-pinned Flutter repos. These rules apply to all of them; the pinned version and repo-specific traps live in each project's own CLAUDE.md.
+The SIDIGS apps (`gaia` Murid, `icarus` Walimurid, `chiron` Guru, `hades` Exam, `helios` Kepala Sekolah, in `~/CODE`) are fvm-pinned Flutter repos. Every current SIDIGS repo has a Greek-mythology name; the others (`nakula`, `arjuna`, `sadewa`, `karna`, `anusapati`) are legacy, replaced by a Greek-named repo, so do not start work in them. These rules apply to all of them; the pinned version and repo-specific traps live in each project's own CLAUDE.md.
 
 - **Always run through the pinned SDK.** `fvm flutter <cmd>`, never a bare `flutter`. The machine-wide fvm default tracks the moving `stable` channel and is newer than what these repos pin. A gate run on the wrong SDK has already passed while the real build failed. `fvm flutter --version` if a result looks surprising.
 - **`analyze` passing is not proof it compiles.** Static analysis has gone green on code that failed `assembleDebug` because a widget parameter was renamed in a later SDK. Any change touching Flutter widget APIs finishes with a real `fvm flutter build apk --debug`, not just analyze and test.
@@ -193,6 +193,7 @@ The SIDIGS apps (`nakula`, `chiron`, `gaia`, `icarus`, `arjuna`, `karna` in `~/C
   - `flutter-analyze-diff` for working-tree changes; `flutter-analyze-diff main` for everything a branch changed vs `main`.
   - Put this in the kickoff of any worker you spawn on a Flutter repo. A worker starts cold and will otherwise reach for the bare command.
 - To see a screen actually run on an emulator, use the `android-emulator-drive` skill rather than improvising adb commands.
+- **To test push notifications, send them yourself with `~/.local/bin/fcm-send <token> '<data_json>' [title] [body]`** (test-only service account in `~/CODE/KEYSTORE/SIDIGS/service-accounts/fcm-test-sender.sidigs-84231.json`, project `sidigs-84231`). It can reach real prod users, so only target a token captured from your own test install. Token capture and gotchas: `~/.claude/projects/-home-suji/memory/sidigs-fcm-test-push.md`.
 
 ## Linux / Arch Shell Rules
 
