@@ -1,8 +1,11 @@
 [Unit]
-Description=Run claude-ping at 09:00 / 14:00 / 19:00 (anchor the 5h window)
+Description=Run claude-ping at 04:00 / 09:00 / 14:00 / 19:00 (anchor the 5h window)
 
 [Timer]
-OnCalendar=*-*-* 09,14,19:00:00
+# 04:00 is a guard slot: its window (04-09) absorbs any early-morning message, so
+# the 09:00 ping still anchors on time. Without it, a message at e.g. 08:35 opens
+# 08:30-13:30 and pushes the whole day off-phase (happened 2026-10-20).
+OnCalendar=*-*-* 04,09,14,19:00:00
 # Persistent = catch up a missed run after the box was off (Windows StartWhenAvailable).
 Persistent=true
 # Wake the machine from suspend to fire (Windows WakeToRun). If your user lacks
