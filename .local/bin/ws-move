@@ -10,7 +10,3 @@ WS=$((BASE + N))
 
 hyprctl dispatch "hl.dsp.window.move({ workspace = $WS, follow = false })"
 hyprctl dispatch "hl.dsp.focus({ workspace = $WS })"
-
-if [ "$BASE" -gt 0 ]; then
-    hyprctl dispatch "hl.dsp.workspace.rename({ workspace = $WS, name = \"$N\" })" 2>/dev/null
-fi

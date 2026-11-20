@@ -55,9 +55,3 @@ fi
 
 TARGET=${IDS[$NEXT_IDX]}
 hyprctl dispatch "hl.dsp.focus({ workspace = $TARGET })"
-
-# Rename for display, so every monitor's workspaces read 1-10 in the waybar
-if [ "$BASE" -gt 0 ]; then
-    DISPLAY_NUM=$((TARGET - BASE))
-    hyprctl dispatch "hl.dsp.workspace.rename({ workspace = $TARGET, name = \"$DISPLAY_NUM\" })" 2>/dev/null
-fi

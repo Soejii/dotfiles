@@ -4,15 +4,12 @@
 # connector name: the main (centre) monitor owns 1-10, the one to its right
 # 11-20, and so on. `hypr-display focused` reports the block for whichever
 # monitor has focus, so this keeps working after the Display pane moves
-# something. Workspaces outside the first block are renamed to "1"-"10" so the
-# waybar reads the same on every monitor.
+# something. The waybar shows every block
+# as 1-10 via format-icons (waybar 0.16+ mixes up workspaces that share a
+# name, so they are no longer renamed).
 
 N=$1
 read -r MONITOR BASE < <(/home/suji/.local/bin/hypr-display focused)
 WS=$((BASE + N))
 
 hyprctl dispatch "hl.dsp.focus({ workspace = $WS })"
-
-if [ "$BASE" -gt 0 ]; then
-    hyprctl dispatch "hl.dsp.workspace.rename({ workspace = $WS, name = \"$N\" })" 2>/dev/null
-fi
