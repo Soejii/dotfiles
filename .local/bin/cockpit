@@ -549,6 +549,8 @@ launch() {
     configure_session
     printf 'cockpit: launched orchestrator [%s] and owned brain on :%s\n' "$ORCH_CMD" "$PORT"
   fi
+  # Scripts with no terminal (ticket-start, started by Hermes) only need the session to exist.
+  [[ -n "${COCKPIT_NO_ATTACH:-}" ]] && return 0
   exec tmux attach -t "$SESS"
 }
 
