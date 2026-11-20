@@ -3,11 +3,17 @@ Description=Treat gamepad input as desktop activity
 Requires=hypridle.service
 After=hypridle.service
 PartOf=hypridle.service
-StartLimitIntervalSec=60
-StartLimitBurst=3
+# No start limit: a Hyprland crash restarts hypridle several times in a second,
+# and PartOf drags this unit along; a limit left it dead (screen locked mid-game).
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 ExecStart=/home/suji/.local/bin/gamepad-idle-inhibit
 Restart=on-failure
 RestartSec=5
+
+[Install]
+# Started whenever hypridle starts, including systemd's own restarts of it,
+# not only by the hyprland.lua exec at login.
+WantedBy=hypridle.service
