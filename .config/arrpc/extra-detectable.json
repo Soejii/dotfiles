@@ -3,7 +3,33 @@
     "id": "1158877933042143272",
     "name": "Counter-Strike 2",
     "executables": [
-      { "is_launcher": false, "name": "linuxsteamrt64/cs2", "os": "linux" }
+      {
+        "is_launcher": false,
+        "name": "linuxsteamrt64/cs2",
+        "os": "linux"
+      }
+    ]
+  },
+  {
+    "id": "356875988589740042",
+    "name": "Dota 2",
+    "executables": [
+      {
+        "is_launcher": false,
+        "name": "linuxsteamrt64/dota2",
+        "os": "linux"
+      }
+    ]
+  },
+  {
+    "id": "1479192099734945802",
+    "name": "Slay the Spire II",
+    "executables": [
+      {
+        "is_launcher": false,
+        "name": "slay the spire 2/slaythespire2",
+        "os": "linux"
+      }
     ]
   }
 ]
