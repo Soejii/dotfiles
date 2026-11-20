@@ -1,1 +1,0 @@
-/home/suji/.agents/skills/academic-explainer/SKILL.md
