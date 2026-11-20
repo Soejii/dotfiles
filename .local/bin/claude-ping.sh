@@ -30,18 +30,24 @@ if [[ ! -x "$CLAUDE" ]]; then
     exit 0
 fi
 
+# stderr is kept apart from the reply: Claude Code prints config warnings there
+# (e.g. a settings.local.json permission-rule lint), and merging them in pushed
+# the actual reply past the 300-char cut, so every log line hid the 'ok'.
+errf="$(mktemp)"
 out="$(printf '' | "$CLAUDE" -p "Reply with exactly: ok" \
-        --model haiku --tools "" --no-session-persistence 2>&1)"
+        --model haiku --tools "" --no-session-persistence 2>"$errf")"
 code=$?
-clean="$(printf '%s' "$out" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
-clean="${clean:0:300}"
+err="$(cat "$errf")"; rm -f "$errf"
+squash() { printf '%s' "$1" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//'; }
+clean="$(squash "$out")"; clean="${clean:0:300}"
+cerr="$(squash "$err")"; cerr="${cerr:0:300}"
 
-if printf '%s' "$clean" | grep -qiE 'hit your .*limit|session limit|usage limit|rate limit|resets [0-9]'; then
-    echo "[$ts] LIMIT (rate-limited, expected) $clean" >> "$LOG"
+if printf '%s %s' "$clean" "$cerr" | grep -qiE 'hit your .*limit|session limit|usage limit|rate limit|resets [0-9]'; then
+    echo "[$ts] LIMIT (rate-limited, expected) $clean $cerr" >> "$LOG"
 elif [[ $code -eq 0 ]]; then
     echo "[$ts] OK    exit=$code  resp='$clean'" >> "$LOG"
 else
-    echo "[$ts] FAIL  exit=$code  resp='$clean'" >> "$LOG"
+    echo "[$ts] FAIL  exit=$code  resp='$clean'  stderr='$cerr'" >> "$LOG"
     # Non-zero so systemd marks the unit failed and the miss is visible in
     # `systemctl --user --failed` instead of only inside ping.log.
     exit 1
