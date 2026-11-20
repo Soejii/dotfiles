@@ -373,6 +373,11 @@ hl.window_rule({ name = "ggst-gamescope", match = { class = "^(gamescope)$" }, m
 -- Fallback if launched WITHOUT gamescope (direct Proton window):
 hl.window_rule({ name = "ggst-fallback", match = { class = "^(steam_app_1384160)$" }, monitor = "DP-1", fullscreen = true })
 
+-- MH Rise: keep sending frame callbacks while its workspace is hidden. Otherwise
+-- the VSync'd present blocks and the whole game (logic included) freezes until
+-- you switch back. Hidden rate = misc.render_unfocused_fps (default 15).
+hl.window_rule({ name = "mhrise-bg", match = { class = "^(steam_app_1446780)$" }, render_unfocused = true })
+
 -- Android Emulator: pin to HDMI-A-1, floating + centered.
 hl.window_rule({ name = "emulator", match = { class = "^(Emulator)$" }, monitor = "HDMI-A-1", float = true, center = true })
 
