@@ -21,6 +21,7 @@ PanelWindow {
     // its own the day a second pane lands.
     readonly property var panes: [
         { id: "system",   icon: "󰍛", label: "System",   src: "panes/SystemPane.qml"   },
+        { id: "llm",      icon: "󰚩", label: "LLM",      src: "panes/LlmPane.qml"      },
         { id: "display",  icon: "󰍹", label: "Display",  src: "panes/DisplayPane.qml"  },
         { id: "calendar", icon: "󰃭", label: "Calendar", src: "panes/CalendarPane.qml" },
         { id: "network",  icon: "󰤨", label: "Network",  src: "panes/NetworkPane.qml"  },
