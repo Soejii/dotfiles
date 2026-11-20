@@ -21,22 +21,22 @@ in the way a rule was meant to prevent.
 
 Ask in plain text, not the multiple-choice tool. One line, then wait:
 
-> Reviewing with codex on `gpt-5.6-sol` at `medium`, unless you'd rather name
+> Reviewing with codex on `gpt-6.1-sol` at `medium`, unless you'd rather name
 > another model or effort.
 
 Whatever Suji types wins verbatim. "go", or a model pre-authorised for the
 session, skips the question.
 
-**The default is `gpt-5.6-sol` at `medium`**, set by Suji on 2026-08-03.
-`~/.codex/config.toml` already pins both, but pass `-m` explicitly anyway so each
-run states its own model instead of inheriting a config that may drift. Override
-effort per-run with `-c model_reasoning_effort=high`.
+**The default is `gpt-6.1-sol` at `medium`**, set by Suji on 2026-10-30 (was `gpt-6-astra` at `low` from 2026-10-15, `gpt-5.6-sol` at `medium` from 2026-08-03).
+`~/.codex/config.toml` pins a different model and effort for interactive codex,
+so always pass both explicitly: `-m gpt-6.1-sol -c model_reasoning_effort=medium`.
+Override per-run when Suji names something else.
 
 **If the run dies within seconds, read the log before blaming the diff or the
 brief.** Two unrelated failures look identical from the outside:
 
-- `Selected model is at capacity` — switch to `gpt-5.6-luna` or `gpt-5.6-terra`,
-  both verified working on 2026-07-30. `gpt-5.6-codex` is not a valid model id.
+- `Selected model is at capacity` — switch to `gpt-6-luna` (verified 2026-09-23) or
+  `gpt-5.6-terra` (verified 2026-07-30). `gpt-5.6-codex` is not a valid model id.
 - `401 Unauthorized` on the websocket, or `refresh token was revoked` — codex
   auth is dead for **every** model, so switching model wastes time. Suji has to
   run `codex login` himself; it is interactive and cannot be done from here.
@@ -77,7 +77,7 @@ itself, because there is nothing left to go looking for:
 ```bash
 S=/path/to/scratchpad
 cat "$S/review.md" | /home/suji/.local/bin/codex exec "$(cat "$S/brief.txt")" \
-  -m gpt-5.6-luna \
+  -m gpt-6-luna \
   -s read-only \
   -C /home/suji/CODE/<repo> \
   -o "$S/codex-findings.md" \

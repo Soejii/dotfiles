@@ -24,7 +24,7 @@ set -euo pipefail
 PORT="${COCKPIT_PORT:-4096}"
 SERVER="http://127.0.0.1:${PORT}"
 SESS="${COCKPIT_SESSION:-cockpit}"
-DEFAULT_MODEL="${COCKPIT_MODEL:-openai/gpt-5.6-luna}"
+DEFAULT_MODEL="${COCKPIT_MODEL:-openai/gpt-6-luna}"
 VARIANT="${COCKPIT_VARIANT:-max}"
 ORCH_CMD="${COCKPIT_ORCH_CMD:-claude --dangerously-skip-permissions}"
 MAX_WORKERS="${COCKPIT_MAX:-6}"

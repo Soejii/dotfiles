@@ -17,13 +17,13 @@ will not say so.
 COCKPIT_VARIANT=medium cockpit spawn rev1 "Read this file and review what is in it:
 /abs/path/to/diff.md
 
-<rest of brief>" openai/gpt-5.6-luna
+<rest of brief>" openai/gpt-6-luna
 ```
 
 Only the headless form takes `-f`, message positional first and `-f` last:
 
 ```bash
-opencode run "DELEGATED-WORKER: <brief>" -m openai/gpt-5.6-luna \
+opencode run "DELEGATED-WORKER: <brief>" -m openai/gpt-6-luna \
   --variant medium --dangerously-skip-permissions \
   </dev/null -f <diff.md> 2>&1 | tail -80
 ```
